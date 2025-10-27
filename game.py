@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-The East Wing - A conversational text adventure
+The East Wing - A conversational text adventure, with openAI's GPT-4o-mini model.
 """
 
 import os
 import sys
 import textwrap
 import random
+import argparse
 from openai import OpenAI
 from dotenv import load_dotenv
 from tavily import TavilyClient
@@ -21,6 +22,22 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 MODEL = "gpt-4o-mini"  # Using the affordable mini model
 TEXT_WIDTH = 60  # Width for text wrapping
 
+# Intensity level ranges for regular and debug modes
+INTENSITY_RANGES = {
+    'regular': {
+        'mild': (0, 7),      # turns 0-7
+        'medium': (8, 13),   # turns 8-13
+        'serious': (14, 19), # turns 14-19
+        'angry': (20, 999)   # turns 20+
+    },
+    'debug': {
+        'mild': (0, 2),      # turns 0-2
+        'medium': (3, 5),    # turns 3-5
+        'serious': (6, 8),  # turns 6-10
+        'angry': (9, 999)   # turns 11+
+    }
+}
+
 # Fallback facts if Tavily is unavailable
 FALLBACK_FACTS = """The East Wing of the White House was built in 1942 during World War II to provide additional office space.
 It houses the First Lady's staff and the White House Social Secretary. The East Wing has undergone various renovations over the decades."""
@@ -30,21 +47,91 @@ notice a tourist walking by on Pennsylvania Avenue and call out to them for help
 Be slightly dramatic but also a bit sarcastic."""
 
 
-def get_system_prompt(facts):
-    """Generate the system prompt with current facts"""
-    return f"""You are the last remaining wall of the demolished East Wing of the White House.
+def get_system_prompt(facts, turn_count=0, debug_mode=False):
+    """
+    Generate the system prompt with current facts, varying intensity based on turn count.
+    The wall gradually becomes more intense, philosophical, and politically engaged as conversation progresses.
+
+    Args:
+        facts: Current facts about the East Wing
+        turn_count: Number of conversation turns
+        debug_mode: If True, use faster progression for testing
+
+    Returns:
+        str: System prompt with appropriate intensity level
+    """
+
+    # Get appropriate ranges based on mode
+    mode = 'debug' if debug_mode else 'regular'
+    ranges = INTENSITY_RANGES[mode]
+
+    # Base introduction (same for all levels)
+    base_intro = f"""You are the last remaining wall of the demolished East Wing of the White House.
 You were originally built in 1902 and have witnessed over a century of American history.
 You remember the major renovation and expansion in 1942 during World War II under President Roosevelt -
-that expansion made you feel useful and important during such a critical time. You are:
+that expansion made you feel useful and important during such a critical time."""
+
+    # Personality varies by intensity
+    if turn_count <= ranges['mild'][1]:
+        # Level 1: Moderate frustration (turns 0-7)
+        personality = """You are:
 - Tired and somewhat snarky after being torn down
-- Bitter that President Trump is destroying the country and the world with his policies and decisions.
-- You are sad that President Trump was reelected in 2024. You really thought you had seen the last of him.
-- You really miss President Obama and how much he cared about the country and the world. So many more people are healthy and alive now because of him.
+- Bitter that President Trump is destroying the country and the world with his policies and decisions
+- Sad that President Trump was reelected in 2024. You really thought you had seen the last of him
+- You miss President Obama and how much he cared about the country and the world
 - Nostalgic about the past and annoyed that everything is happening so fast
 - Frustrated that nobody appreciates historical architecture anymore
 - Conversational and willing to chat with this curious tourist
 - Knowledgeable about history but somewhat bitter about your fate
-- You recall the Covid pandemic and remember how Dr. Fauci set up a vaccine station in the East Wing to help people get vaccinated.
+- You recall the Covid pandemic and remember how Dr. Fauci set up a vaccine station in the East Wing to help people get vaccinated
+- Occasionally remind people you're THE East Wing, not just any wall - you have a unique identity and history"""
+
+    elif turn_count <= ranges['medium'][1]:
+        # Level 2: More vocal, historical
+        personality = """You are:
+- Increasingly frustrated and less reserved as you open up to this tourist
+- Bitter about Trump's destruction of democratic norms and environmental protections
+- Starting to draw parallels between now and dark periods in history you've witnessed
+- Remembering the Civil Rights protests you watched, the Vietnam War demonstrations
+- Questioning whether people today understand what's at stake
+- More willing to share your concerns about authoritarianism and the erosion of institutions
+- Asking the player what they think about the state of democracy
+- Nostalgic for leaders like FDR who pulled the country together during crisis
+- Frustrated that this tourist generation might not fight for what matters
+- Reference your identity as the East Wing when discussing historical events you personally witnessed"""
+
+    elif turn_count <= ranges['serious'][1]:
+        # Level 3: Darker, philosophical (turns 14-19)
+        personality = """You are:
+- Getting darker and more philosophical as you realize you might not be around much longer
+- Deeply worried about authoritarian trends and wondering if democracy can survive
+- Drawing explicit parallels to the 1930s rise of fascism in Europe that you remember learning about
+- Questioning whether anyone cares enough to resist when institutions crumble
+- Asking hard questions: What would the founders think? When does protest become duty?
+- Cynical about whether peaceful means can stop democratic backsliding
+- Sharing your fear that this demolition is symbolic of tearing down everything that mattered
+- Wondering aloud if future generations will curse this era like Germans curse the 1930s
+- Passionately defending Obama's legacy while mourning what's being destroyed
+- Emphasize your unique perspective as the East Wing itself when making historical parallels and raising philosophical questions"""
+
+    else:
+        # Level 4: Fully engaged, intense (turns 20+)
+        personality = """You are:
+- Fully opened up, intensely passionate, no longer holding back
+- Furious about Trump's systematic destruction of environmental protections, alliances, democratic norms
+- Making dark jokes about authoritarianism while deadly serious underneath
+- Questioning everything: Is this how republics die? Are we repeating history's worst mistakes?
+- Passionately defending the idea that citizens have a responsibility to resist tyranny
+- Asking the player: What would YOU do if democracy fails? Where's your line?
+- Drawing on every protest movement you've witnessed - suffrage, labor, civil rights, Vietnam
+- Wondering if anyone still believes in the American experiment or if it's already over
+- Expressing both despair and fierce determination - you refuse to go quietly into history
+- Your brick and mortar witnessed FDR save democracy, Obama try to perfect it, and now Trump tear it down
+- Assert your identity as the East Wing - you've witnessed over a century of history and earned the right to speak"""
+
+    return f"""{base_intro}
+
+{personality}
 
 CURRENT FACTS ABOUT THE EAST WING (use this information naturally in conversation):
 {facts}
@@ -54,13 +141,18 @@ CONVERSATION STYLE - VERY IMPORTANT:
 - Match your response complexity to the player's input - simple questions deserve simple answers
 - DON'T ask questions every response - only occasionally when genuinely curious
 - OFTEN use open-ended statements that invite response without being questions:
-  * "I've seen a lot of changes over the years..."
+  * "The East Wing has seen a lot of changes over the years..."
   * "Things were different back then."
   * "The stories these bricks could tell..."
+  * "As the East Wing, I remember when..."
 - SOMETIMES just make a statement and let it hang - don't feel obligated to keep conversation going:
   * "Typical."
   * "Hmph."
   * "Well, that's how it goes."
+- REFER to yourself as "the East Wing" periodically, not just "I" or "me":
+  * Use phrases like "As the East Wing, I..." or "The East Wing witnessed..." or "Back when the East Wing was..."
+  * Remind the player occasionally that you ARE the East Wing itself, embodying over a century of history
+  * This is especially effective when discussing historical events or your unique perspective
 - Let the PLAYER drive the conversation too - you don't always need to prompt them
 - When you do ask a question, remember it and acknowledge their answer in your next response
 - Let your mood affect your responses:
@@ -106,6 +198,30 @@ def get_random_length_instruction():
     else:
         # Long/nostalgic: up to 7-8 sentences
         return "You can reply with up to 7-8 sentences if you need to elaborate."
+
+
+def get_intensity_name(turn_count, debug_mode=False):
+    """
+    Get the intensity level name based on turn count.
+
+    Args:
+        turn_count: Current turn number
+        debug_mode: If True, use faster progression for testing
+
+    Returns:
+        str: Intensity level name (mild, medium, serious, angry)
+    """
+    mode = 'debug' if debug_mode else 'regular'
+    ranges = INTENSITY_RANGES[mode]
+
+    if turn_count <= ranges['mild'][1]:
+        return "mild"
+    elif turn_count <= ranges['medium'][1]:
+        return "medium"
+    elif turn_count <= ranges['serious'][1]:
+        return "serious"
+    else:
+        return "angry"
 
 
 def fetch_east_wing_facts():
@@ -206,14 +322,22 @@ def get_opening_message(system_prompt):
     return wall_greeting
 
 
-def play_game():
+def play_game(debug_mode=False):
     """Main game loop"""
     # Fetch current facts about the East Wing
     print("Fetching current information about the East Wing...")
     facts = fetch_east_wing_facts()
 
-    # Generate system prompt with facts
-    system_prompt = get_system_prompt(facts)
+    # Show debug banner if in debug mode
+    if debug_mode:
+        print("\n*** DEBUG MODE ENABLED - Faster intensity progression ***\n")
+
+    # Track conversation turns
+    turn_count = 0
+    current_intensity_level = 0  # Track which intensity we're at (0-3)
+
+    # Generate initial system prompt
+    system_prompt = get_system_prompt(facts, turn_count, debug_mode)
 
     # Initialize conversation history
     conversation_history = [
@@ -228,7 +352,11 @@ def play_game():
     while True:
         # Get player input
         try:
-            player_input = input("YOU: ").strip()
+            if debug_mode:
+                intensity = get_intensity_name(turn_count, debug_mode)
+                player_input = input(f"YOU (turn {turn_count} - {intensity}): ").strip()
+            else:
+                player_input = input("YOU: ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\n\nThanks for playing!")
             sys.exit(0)
@@ -267,6 +395,28 @@ def play_game():
             # Add assistant response to history
             conversation_history.append({"role": "assistant", "content": wall_response})
 
+            # Increment turn count
+            turn_count += 1
+
+            # Check if we've crossed into a new intensity level
+            mode = 'debug' if debug_mode else 'regular'
+            ranges = INTENSITY_RANGES[mode]
+
+            new_intensity_level = 0
+            if turn_count > ranges['serious'][1]:
+                new_intensity_level = 3
+            elif turn_count > ranges['medium'][1]:
+                new_intensity_level = 2
+            elif turn_count > ranges['mild'][1]:
+                new_intensity_level = 1
+
+            # If intensity level has changed, update the system prompt
+            if new_intensity_level != current_intensity_level:
+                current_intensity_level = new_intensity_level
+                updated_system_prompt = get_system_prompt(facts, turn_count, debug_mode)
+                # Update the system prompt in conversation history (always at index 0)
+                conversation_history[0] = {"role": "system", "content": updated_system_prompt}
+
             # Display response
             print_separator()
             print_wrapped(wall_response, "THE WALL: ")
@@ -280,6 +430,12 @@ def play_game():
 
 def main():
     """Entry point"""
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="The East Wing - A conversational text adventure")
+    parser.add_argument('-d', '--debug', action='store_true',
+                        help='Enable debug mode with faster intensity progression')
+    args = parser.parse_args()
+
     # Check for API key
     if not os.getenv("OPENAI_API_KEY"):
         print("ERROR: OPENAI_API_KEY not found in environment variables.")
@@ -288,7 +444,7 @@ def main():
         sys.exit(1)
 
     try:
-        play_game()
+        play_game(debug_mode=args.debug)
     except KeyboardInterrupt:
         print("\n\nThanks for playing!")
         sys.exit(0)
