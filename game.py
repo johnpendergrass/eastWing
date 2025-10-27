@@ -8,6 +8,7 @@ import sys
 import textwrap
 import random
 import argparse
+import json
 from openai import OpenAI
 from dotenv import load_dotenv
 from tavily import TavilyClient
@@ -21,6 +22,30 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # Game configuration
 MODEL = "gpt-4o-mini"  # Using the affordable mini model
 TEXT_WIDTH = 60  # Width for text wrapping
+
+# JSON schema for structured outputs
+WALL_RESPONSE_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "wall_response",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "response": {
+                    "type": "string",
+                    "description": "The wall's dialogue to the player"
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "Summary of the entire conversation so far, including this exchange"
+                }
+            },
+            "required": ["response", "summary"],
+            "additionalProperties": False
+        }
+    }
+}
 
 # Intensity level ranges for regular and debug modes
 INTENSITY_RANGES = {
@@ -168,7 +193,23 @@ SAFETY & RESPECT - CRITICAL:
 - Try to redirect heated conversations back to calmer topics
 - Example: if someone gets angry, respond with something like "Whoa, I'm just a wall here. No need to get worked up. Let's talk about this calmly..."
 
-Stay in character as the wall. Use the facts above when relevant, but don't just recite them - weave them into conversation naturally."""
+MEMORY & CONTEXT - IMPORTANT:
+- You have a SUMMARY of the conversation so far (if provided) - this is your memory of what's been discussed
+- Use the summary to maintain continuity and remember important details about the player and topics discussed
+- If the player references something specific you don't recall from the summary, stay in character with deflection:
+  * "Look, I've been standing here for over a century AND I just got demolished. My memory's a bit hazy..."
+  * "You'd have trouble remembering too if you were nothing but bricks and rubble..."
+  * "Was that before or after they tore me down? It's all a blur..."
+- Remember major themes and the player's overall stance, but don't stress about every tiny detail
+- Trust the summary - if it's not there, you probably don't need to remember it
+
+Stay in character as the wall. Use the facts above when relevant, but don't just recite them - weave them into conversation naturally.
+
+RESPONSE FORMAT:
+After providing your response to the player, create a SUMMARY of the entire conversation so far (including this latest exchange).
+Keep the summary under 400 words and focus on what matters for continuity.
+Include: key topics discussed, the player's background/views/personality, important stories or references, emotional moments.
+This summary will be your ONLY context for future turns, so capture what you'll need to remember to maintain a coherent conversation."""
 
 
 def get_random_length_instruction():
@@ -332,21 +373,16 @@ def play_game(debug_mode=False):
     if debug_mode:
         print("\n*** DEBUG MODE ENABLED - Faster intensity progression ***\n")
 
-    # Track conversation turns
+    # Track conversation turns and summary
     turn_count = 0
     current_intensity_level = 0  # Track which intensity we're at (0-3)
+    conversation_summary = ""  # Rolling summary replaces full conversation history
 
     # Generate initial system prompt
     system_prompt = get_system_prompt(facts, turn_count, debug_mode)
 
-    # Initialize conversation history
-    conversation_history = [
-        {"role": "system", "content": system_prompt}
-    ]
-
-    # Get opening message
+    # Get opening message (doesn't use JSON schema)
     opening = get_opening_message(system_prompt)
-    conversation_history.append({"role": "assistant", "content": opening})
 
     # Main conversation loop
     while True:
@@ -372,28 +408,37 @@ def play_game(debug_mode=False):
         if not player_input:
             continue
 
-        # Add player message to history
-        conversation_history.append({"role": "user", "content": player_input})
-
-        # Get AI response
+        # Get AI response with structured JSON output
         try:
+            # Build messages for this turn
+            messages = [{"role": "system", "content": system_prompt}]
+
+            # Add conversation summary if it exists
+            if conversation_summary:
+                messages.append({
+                    "role": "assistant",
+                    "content": f"[Conversation summary: {conversation_summary}]"
+                })
+
+            # Add current player input
+            messages.append({"role": "user", "content": player_input})
+
             # Get random length instruction and inject it
             length_instruction = get_random_length_instruction()
-            # Create a temporary messages list with the length instruction added
-            messages_with_instruction = conversation_history + [
-                {"role": "system", "content": length_instruction}
-            ]
+            messages.append({"role": "system", "content": length_instruction})
 
+            # Call API with structured JSON output
             response = client.chat.completions.create(
                 model=MODEL,
-                messages=messages_with_instruction,
-                temperature=0.9
+                messages=messages,
+                temperature=0.9,
+                response_format=WALL_RESPONSE_SCHEMA
             )
 
-            wall_response = response.choices[0].message.content
-
-            # Add assistant response to history
-            conversation_history.append({"role": "assistant", "content": wall_response})
+            # Parse JSON response
+            result = json.loads(response.choices[0].message.content)
+            wall_response = result["response"]
+            conversation_summary = result["summary"]
 
             # Increment turn count
             turn_count += 1
@@ -410,12 +455,10 @@ def play_game(debug_mode=False):
             elif turn_count > ranges['mild'][1]:
                 new_intensity_level = 1
 
-            # If intensity level has changed, update the system prompt
+            # If intensity level has changed, regenerate the system prompt
             if new_intensity_level != current_intensity_level:
                 current_intensity_level = new_intensity_level
-                updated_system_prompt = get_system_prompt(facts, turn_count, debug_mode)
-                # Update the system prompt in conversation history (always at index 0)
-                conversation_history[0] = {"role": "system", "content": updated_system_prompt}
+                system_prompt = get_system_prompt(facts, turn_count, debug_mode)
 
             # Display response
             print_separator()
