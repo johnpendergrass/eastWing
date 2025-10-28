@@ -1,221 +1,459 @@
 # The East Wing - Technical Specifications
+**Version:** 0.03
+**Last Updated:** 2025-10-28
 
-## Overview
+---
 
-A conversational text adventure game where the player talks with an AI character (the last remaining wall of the demolished White House East Wing). The wall has personality, remembers the conversation via rolling summaries, and evolves its intensity over time.
+## Project Overview
 
-## Architecture
+The East Wing is a conversational text adventure game where the player chats with the last remaining wall of the demolished White House East Wing. The wall is a character with evolving personality, political opinions, and emotional depth based on turn progression.
 
-### Core Technology Stack
-- **Language**: Python 3.8+
-- **AI Model**: OpenAI GPT-4o-mini
-- **APIs**:
-  - OpenAI Chat Completions API with structured outputs
-  - Tavily API for real-time web search (optional)
-- **Dependencies**: openai, python-dotenv, tavily-python
+---
 
-### Memory System: Rolling Summary Approach
+## Design Decisions
 
-**Implementation**: Each turn, the AI receives:
-1. System prompt (personality + instructions)
-2. Conversation summary (if exists) from previous turn
-3. Current player input
+### 1. Architecture Pattern: Stateless API with Rolling Summary
 
-**Output**: Structured JSON with two fields:
-- `response`: The wall's dialogue to display to player
-- `summary`: Updated summary of entire conversation (≤400 words)
+**Decision:** Use rolling summary instead of full conversation history
 
-**Benefits**:
-- Constant token usage per turn (~1500 tokens)
-- Supports unlimited conversation length
-- No context window limits
-- Summary grows naturally to capture important details
+**Why:**
+- **Token efficiency:** Conversation history grows linearly; summary stays constant (~500 words)
+- **Cost control:** Each API call uses ~700-1000 tokens vs thousands for full history
+- **Context preservation:** AI-generated summary captures what matters for continuity
+- **Scalability:** Unlimited conversation length without context window limits
 
-**JSON Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "response": {"type": "string"},
-    "summary": {"type": "string"}
-  },
-  "required": ["response", "summary"]
-}
+**Implementation:**
+- Each response includes JSON with `{response, summary}` fields
+- Summary replaces entire conversation history on next turn
+- Last 5 summaries stored for meta-analysis
+
+---
+
+### 2. Stage-Based Personality Progression
+
+**Decision:** 6 distinct stages (10, 20, 30, 40, 50, 90) with automatic progression based on turn count
+
+**Why:**
+- **Natural character development:** Wall gradually opens up as trust builds
+- **Dynamic storytelling:** Conversation evolves from mild → upset → serious → angry → tired
+- **Replayability:** Fast mode for testing, slow mode for full experience
+- **Predictable pacing:** Clear progression markers
+
+**Stages:**
+- **Stage 10** (Turn 0): Mild - tired and snarky, initial greeting
+- **Stage 20** (Turn 1): Mild - conversational but reserved
+- **Stage 30** (Turn 5/3): Upset - more vocal, drawing historical parallels
+- **Stage 40** (Turn 8/5): Serious - darker, philosophical, worried
+- **Stage 50** (Turn 10/7): Angry - fully engaged, intensely passionate
+- **Stage 90** (Turn 15/12): Tired - exhausted, ready to end conversation
+
+**Two Speed Modes:**
+- **Slow** (default): 25+ turns to completion, gradual progression
+- **Fast** (testing): 12 turns to completion, quick personality shifts
+
+---
+
+### 3. Unified Command System (No Debug Mode)
+
+**Decision:** Make all commands available to all users, remove debug mode entirely
+
+**Why:**
+- **Simplicity:** No mode switching, no confusion about what's available
+- **Discoverability:** All features in one help screen
+- **User empowerment:** Players can explore API details, memory, etc. if curious
+- **Reduced complexity:** Fewer conditional code paths
+
+**Command Pre-Interpreter:**
+- Single `parse_command()` function categorizes input
+- Returns command type + data or ('chat', player_input)
+- Centralized validation with helpful error messages
+- Clean dispatcher pattern in main loop
+
+---
+
+### 4. Selection Menu Interface
+
+**Decision:** Use numbered selection (1, 2, 3) vs arrow keys or text input
+
+**Why:**
+- **Zero dependencies:** Works on all terminals without libraries
+- **Universal compatibility:** No ANSI issues on old terminals
+- **Speed:** Type a number faster than arrow navigation for 2-4 options
+- **Clarity:** Everyone understands "type 1 or 2"
+- **Simplicity:** Matches John's philosophy of easy-to-understand code
+
+**Format:**
+```
+════════════════════════════════════════════════════════════
+                  SELECT AI MODEL
+════════════════════════════════════════════════════════════
+
+  [1] gpt-5-mini ★ CURRENT
+      → Excellent quality, fast responses, moderate cost
+      → Performance: Excellent | Speed: Fast | Cost: Moderate
+
+  [2] gpt-5-nano
+      → Fastest responses, lowest cost, good quality
+      → Performance: Good | Speed: Very Fast | Cost: Cheapest
+
+  [0] Cancel
+────────────────────────────────────────────────────────────
+Select (0-2):
 ```
 
-### Personality System: Stage-Based Progression
+**Commands with Selection:**
+- `speed ?` → Choose slow or fast
+- `mood ?` → Choose mild, upset, serious, angry, tired
+- `model ?` → Choose between 4 AI models
 
-**5 Discrete Stages** (using spaced numbering for future extensibility):
+---
 
-1. **stage_10** (Opening - Turn 0)
-   - Very first response only
-   - Always exactly 2 sentences
-   - Uses 'mild' personality
+### 5. Model Configuration & Runtime Switching
 
-2. **stage_20** (Early - Normal: turn 1-7, Fast: turn 1-2)
-   - Tired, snarky, nostalgic
-   - Moderately bitter about current events
-   - Conversational and willing to chat
-   - Response length: 1-4 sentences
-   - Uses 'mild' personality
+**Decision:** Allow model switching mid-game without losing context
 
-3. **stage_30** (Mid - Normal: turn 8-13, Fast: turn 3-5)
-   - More vocal and frustrated
-   - Drawing historical parallels
-   - Questioning player about their views
-   - Response length: 2-5 sentences
-   - Uses 'upset' personality
+**Why:**
+- **Experimentation:** Players can compare model quality in same conversation
+- **Cost control:** Start with expensive model, switch to cheap if acceptable
+- **Performance tuning:** Switch to faster model if impatient
+- **Stateless API:** Every call is independent, only summary matters
 
-4. **stage_40** (Late - Normal: turn 14-19, Fast: turn 6-8)
-   - Darker, philosophical
-   - Deep concerns about democracy
-   - Explicit historical parallels to 1930s
-   - Response length: 2-6 sentences
-   - Uses 'serious' personality
+**Supported Models:**
+1. **gpt-5-mini** (default) - Best balance of quality/cost/speed
+2. **gpt-5-nano** - Fastest and cheapest, 50% cost savings
+3. **gpt-5** - Best quality, expensive, slower
+4. **gpt-4o-mini** - Legacy fallback
 
-5. **stage_50** (Final - Normal: turn 20+, Fast: turn 9+)
-   - Fully engaged, passionate
-   - No longer holding back
-   - Fierce determination despite despair
-   - Response length: 2-7 sentences
-   - Uses 'angry' personality
+**Model-Specific Configurations:**
+- Temperature support (GPT-4 only, GPT-5 doesn't support custom temps)
+- Reasoning effort (GPT-5 models only, set to 'minimal' for speed)
 
-**System Prompt**: Regenerated when crossing stage thresholds
+---
 
-**Reply Length Progression**: Response length scales naturally with emotional intensity. Uses simple uniform random selection between min/max for current stage.
+### 6. Mood Override System
 
-### Configuration
+**Decision:** Allow manual mood selection that overrides stage progression
 
-**Constants**:
-- `MODEL = "gpt-4o-mini"` - OpenAI model
-- `TEXT_WIDTH = 60` - Character width for text wrapping
-- `PROGRESSION_SPEEDS` - Stage thresholds and reply lengths for 'normal' and 'fast' modes
+**Why:**
+- **Player agency:** Want to explore a specific personality without waiting
+- **Testing:** Quickly test dialogue at different mood levels
+- **Creative play:** Players can keep wall calm or make it angry on demand
+- **Persistent:** Override stays active until changed or player exits
 
-**Color Constants** (all customizable):
-- `COLOR_SYSTEM` - Bright cyan (help, instructions, system messages)
-- `COLOR_PLAYER` - Default (player input prompt)
-- `COLOR_AI` - Bright white (wall responses)
-- `COLOR_DEBUG` - Cyan (debug command output)
-- `COLOR_ALERT` - Yellow (warnings, alerts)
+**Implementation:**
+- `mood_override = None` (auto-progression) or `'angry'` (manual)
+- Check override first in `get_system_prompt()`, fall back to stage
+- Regenerate system prompt immediately when mood changed
+- Display current mood (manual or automatic) in help screen
 
-**Environment Variables** (.env file):
-- `OPENAI_API_KEY` - Required
-- `TAVILY_API_KEY` - Optional (uses fallback facts if missing)
+---
 
-### Command-Line Flags
+### 7. Structured Summary Format
 
-**`--debug` or `-d`**: Enable debug features
-- Shows turn count and personality level in prompt
-- Enables debug commands: `api`, `api all`, `memory`/`summary`, `fast`, `normal`
-- Can also be toggled during gameplay with `debug on`/`debug off`
+**Decision:** Use structured format with 8 labeled sections vs narrative paragraph
 
-**`--fast` or `-f`**: Use fast stage progression
-- Stages advance quicker (stage_50 at turn 9 vs turn 20)
-- Useful for testing different personality levels
-- Can also be toggled during gameplay with `fast`/`normal` (requires debug mode)
+**Why:**
+- **Information density:** More facts in fewer words
+- **Parseable:** AI can easily find specific info (moods, topics, opinions)
+- **Consistency:** Every summary has same structure
+- **Debugging:** Easier to verify summary quality
 
-**Examples**:
-- `python game.py` - Normal gameplay
-- `python game.py --debug` - With debug commands
-- `python game.py --fast` - Fast progression for testing
-- `python game.py --debug --fast` - Both features
+**Format:**
+```
+[WALL MOOD: snarky]
+[PLAYER MOOD: curious]
+[LAST TOPIC: demolition timeline]
+[KEY TOPICS COVERED: bullet list]
+[PLAYER INFO: facts about player]
+[IMPORTANT REFERENCES: historical events mentioned]
+[OPINION: political views discussed]
+[CONVERSATION SUMMARY: 2-3 sentence overview]
+```
 
-### Runtime Commands
+**Character limit:** 1000 words (structured format actually uses less than narrative)
 
-**Always Available**:
-- `help` - Display instructions and current state
-- `speed` - Show current progression speed (normal or fast)
-- `mood` - Show current mood/personality of the wall
-- `quit`, `exit`, `bye`, `goodbye` - End game
-- `debug on` / `debug off` - Toggle debug mode during gameplay
+---
 
-**Debug Commands** (when debug mode is active):
-- `api` - Show last API request (truncated at 500 chars)
-- `api all` - Show complete untruncated API request
-- `memory` or `summary` - Analyze how conversation summary has evolved
-- `fast` - Switch to fast progression speed (includes turn number and current mood)
-- `normal` - Switch to normal progression speed (includes turn number and current mood)
+### 8. Real-Time Facts Integration (Tavily API)
 
-**Command Validation**:
-- Malformed commands (e.g., `debug xyz`, `api xyz`, `fast something`) are caught before reaching the AI
-- Helpful error messages in yellow (COLOR_ALERT) explain correct usage
-- Example: `'api xyz' is not a valid command. Try 'api' or 'api all'.`
+**Decision:** Fetch current web facts about East Wing and Trump at game start
 
-### Character Design: The Wall
+**Why:**
+- **Relevance:** Game references actual current events
+- **Freshness:** Not limited to training data cutoff
+- **Authenticity:** Wall can discuss real recent developments
+- **Filtered:** Clean text-only, no image refs or navigation menus
 
-**Identity**: Last remaining wall of demolished White House East Wing
-- Originally built: 1902
-- Major renovation: 1942 under FDR
-- Over 120 years of American history witnessed
+**Tavily Configuration:**
+- `search_depth="advanced"` - Better content extraction
+- `include_images=False` - No image references
+- `include_answer=True` - AI-generated clean summary
+- `max_results=3` per query
 
-**Personality Traits**:
-- Bitter about Trump, nostalgic for Obama
-- Knowledgeable about history
-- Tired and snarky after demolition
-- Progressive political views
-- Self-aware about being "the East Wing" itself
+**Fallback:** Static facts if API unavailable
 
-**Memory Handling**:
-- Uses summary to remember important details
-- Can deflect forgotten details in-character:
-  - "Look, I've been standing here for over a century AND I just got demolished. My memory's a bit hazy..."
-  - "You'd have trouble remembering too if you were nothing but bricks and rubble..."
+---
 
-### Conversation Flow
+### 9. Color-Coded Output
 
-1. **Opening**: Flavor text + AI-generated greeting
-   - Display scenario text (system color)
-   - Call API with stage_10 constraints (2 sentences exactly)
-   - Uses JSON schema format (summary generated but not displayed)
-   - Display wall's greeting (AI color)
+**Decision:** Use ANSI color codes for different message types
 
-2. **Turn Loop**:
-   - Player input (player color)
-   - Validate input for malformed commands
-   - Check for commands (help, speed, mood, debug on/off, fast/normal, api, memory, quit)
-   - Build messages: system prompt + summary + player input + length instruction
-   - API call with structured JSON response format
-   - Parse response and summary
-   - Update conversation summary and history (keep last 5)
-   - Check for stage transition → regenerate system prompt if needed
-   - Display response to player (AI color)
+**Colors:**
+- `COLOR_AI` (cyan/36m): The Wall's responses
+- `COLOR_PLAYER` (green/32m): Player prompts
+- `COLOR_SYSTEM` (yellow/33m): Status messages, help text
+- `COLOR_ALERT` (red/31m): Errors, warnings
+- `COLOR_DEBUG` (magenta/35m): Technical info (API, memory)
 
-3. **Exit**: `quit`, `exit`, `bye`, `goodbye`, or Ctrl+C
+**Why:**
+- **Readability:** Instantly distinguish player vs AI text
+- **Visual hierarchy:** System messages vs gameplay
+- **Accessibility:** Works on all modern terminals
+- **Simple:** Basic ANSI codes, no external libraries
 
-### Color System
+---
 
-**Purpose-Based Color Coding**:
-- **SYSTEM** (bright cyan) - Help text, instructions, confirmations, errors
-- **PLAYER** (default) - Player input prompt only
-- **AI** (bright white) - Wall's dialogue responses only
-- **DEBUG** (cyan) - Output from debug commands (api, memory, summary)
-- **ALERT** (yellow) - Warnings and important notices
+### 10. Text Wrapping
 
-**Customization**: All colors have commented alternatives at top of game.py for easy switching
+**Decision:** Wrap text at 60 characters with proper formatting
 
-### Future Extensibility
+**Why:**
+- **Readability:** Long lines strain eyes
+- **Terminal compatibility:** Fits most terminal widths
+- **Professionalism:** Clean, newspaper-like presentation
+- **Prefix alignment:** "THE WALL: " prefix + wrapped indent
 
-**Stage System Expansion**:
-- Spaced numbering (10, 20, 30...) allows easy insertion of intermediate stages
-- Could add stage_15, stage_25, etc. without refactoring
-- Example: stage_15 could be a transitional "slightly frustrated" level
+**Implementation:** Python `textwrap.TextWrapper` with `width=60`
 
-**Dynamic System Prompts** (deferred):
-- Add parameters to `get_system_prompt()`: intensity_modifier, player_sentiment
-- Enable gradual intensity ramping (0-100 scale)
-- React to player behavior in real-time
-- Conditional personality adjustments
+---
 
-**Debug Features**:
-- Additional debug commands for testing (e.g., jump to specific stage)
-- Conversation state inspection
-- Export debug logs
+## File Organization
 
-**Potential Additions**:
-- Save/load conversations
-- Multiple characters
-- Different story scenarios
-- ASCII art of the wall
-- Sentiment analysis of player input
-- Color theme presets (dark mode, light mode, high contrast)
-- Configuration file for persistent settings
+```
+game.py structure (~1275 lines):
+├── Constants (lines 1-210)
+│   ├── ANSI colors
+│   ├── MODEL_OPTIONS (4 models with capabilities)
+│   ├── DEFAULT_MODEL = 'gpt-5-mini'
+│   ├── WALL_RESPONSE_SCHEMA (JSON schema)
+│   ├── PROGRESSION_SPEEDS (slow + fast)
+│   └── INTRO_PROMPT / FALLBACK_FACTS
+│
+├── Core Functions (lines 210-720)
+│   ├── get_system_prompt(facts, turn, speed, mood_override)
+│   ├── get_random_length_instruction()
+│   ├── get_current_stage()
+│   ├── fetch_east_wing_facts() - Tavily API
+│   ├── validate_model()
+│   ├── print helpers (separator, wrapped)
+│   ├── display_api_debug_info()
+│   ├── analyze_summary_evolution()
+│   └── display_memory_analysis()
+│
+├── ═══ UI / COMMAND SYSTEM ═══ (lines 720-930)
+│   ├── parse_command() - Command pre-interpreter
+│   ├── show_selection_menu() - Generic numbered menu
+│   ├── select_speed()
+│   ├── select_mood()
+│   ├── select_model()
+│   ├── display_startup()
+│   └── display_help() - Unified help screen
+│
+├── ═══ GAME LOGIC ═══ (lines 930-1200)
+│   ├── get_opening_message()
+│   └── play_game(progression_speed, model)
+│       ├── Setup & initialization
+│       ├── Input loop
+│       ├── Command dispatcher (no debug mode!)
+│       └── Conversation/API logic
+│
+└── main() - Entry point with argparse (lines 1200+)
+```
+
+**Organization Philosophy:**
+- Clear visual separators between sections
+- UI separate from game logic (per John's request)
+- All related functions grouped together
+- Easy to find and modify specific functionality
+
+---
+
+## Command-Line Interface
+
+```bash
+python game.py [--fast | --slow] [--model MODEL_NAME]
+
+Flags:
+  --fast, -f       Fast progression (12 turns to final stage)
+  --slow, -s       Slow progression (25+ turns) [DEFAULT]
+  --model NAME     Select AI model (default: gpt-5-mini)
+
+Examples:
+  python game.py                          # Slow mode, gpt-5-mini
+  python game.py --fast                   # Fast mode for testing
+  python game.py --model gpt-5-nano       # Cheapest model
+  python game.py --fast --model gpt-5     # Fast + best quality
+```
+
+**Note:** Debug mode has been removed in v0.03. All commands are now available to everyone.
+
+---
+
+## Runtime Commands
+
+**All commands available to everyone:**
+
+```
+help         - Show help screen with current state
+
+quit/exit/bye/goodbye/ctrl-c - Exit game
+
+speed        - Show current game speed
+speed ?      - Select new speed (slow or fast)
+
+mood         - Show the Wall's current mood
+mood ?       - Manually set the Wall's mood
+
+model        - Show current AI model
+model ?      - Switch AI models mid-game
+
+api          - Show last API request (brief)
+api all      - Show complete untruncated API request
+
+memory       - AI analyzes summary evolution
+summary      - (alias for memory)
+```
+
+**Command Format:**
+- Commands with `?` show a numbered selection menu
+- Menu format: Type number (0-4) to select, 0 to cancel
+- All menus have consistent formatting with ★ CURRENT marker
+
+---
+
+## Help Screen Format
+
+```
+════════════════════════════════════════════════════════════
+ CURRENT STATE: Turn: 7 | Mood: calm | Speed: slow | Model: gpt-5-mini
+════════════════════════════════════════════════════════════
+
+                        HOW TO PLAY
+────────────────────────────────────────────────────────────
+
+• Type your responses to chat with the character
+• The character will respond based on your conversation
+• Be curious, ask questions, share your thoughts!
+
+COMMANDS YOU MAY USE DURING THE CONVERSATION:
+
+help         - show this message
+
+quit         - any of these will quit the program
+exit
+bye, goodbye
+ctrl-c
+
+speed        - show current game speed
+speed ?      - change the game speed
+
+mood         - show the current mood of 'the Wall'
+mood ?       - change the mood
+
+model        - show current openAI model being used
+model ?      - change the AI model being used
+
+api          - show the last API request (brief)
+api all      - show the complete untruncated API request
+
+memory       - AI summarizes the last few exchanges
+summary        between the player and 'the Wall'.
+
+────────────────────────────────────────────────────────────
+```
+
+---
+
+## Algorithm Details
+
+### Stage Determination
+
+```python
+def get_current_stage(turn_count, progression_speed):
+    """Reverse lookup: check stages 90→50→40→30→20→10"""
+    stage_keys = ['stage_90', 'stage_50', 'stage_40',
+                  'stage_30', 'stage_20', 'stage_10']
+
+    for stage_key in stage_keys:
+        if turn_count >= PROGRESSION_SPEEDS[speed][stage_key]['start_turn']:
+            return stage_key
+
+    return 'stage_10'
+```
+
+**Why reverse order:** Find highest stage player has reached
+
+### Command Parsing
+
+```python
+def parse_command(player_input):
+    """
+    Returns: (command_type, data)
+
+    Priority:
+    1. Exact quit commands
+    2. Exact other commands
+    3. Validation for common mistakes
+    4. Return 'chat' for conversation
+    """
+```
+
+**Command types:** quit, help, speed_show, speed_select, mood_show, mood_select, model_show, model_select, api, api_all, memory, chat, error
+
+---
+
+## Future Enhancement Considerations
+
+### Potential Additions:
+1. **Save/Load:** Serialize game state (turn, summary, mood) to resume later
+2. **Multiple Characters:** Other White House fixtures with different personalities
+3. **Branching Paths:** Different story branches based on player's political stance
+4. **Achievement System:** Track milestones
+5. **Conversation Export:** Save transcripts as text/JSON
+6. **Theme System:** User-configurable color schemes
+
+### Known Limitations:
+- No save game system
+- Summary quality depends on AI's summarization skill
+- Tavily API requires internet connection
+- Color codes might not work on very old terminals
+- Quit intent detection is simple (exact match only)
+
+---
+
+## Testing Checklist
+
+**Functionality:**
+- ✅ All commands work (help, speed, mood, model, api, memory, quit)
+- ✅ Selection menus work (speed ?, mood ?, model ?)
+- ✅ Model switching preserves conversation context
+- ✅ Mood override persists correctly
+- ✅ Stage progression occurs at correct turns
+- ✅ API errors handled gracefully
+- ✅ Color coding displays correctly
+- ✅ Text wrapping works properly
+- ✅ Invalid commands show helpful errors
+
+**Performance Targets:**
+- Response time: < 3 seconds (gpt-5-nano minimal reasoning)
+- Cost per 20-turn conversation:
+  - gpt-5-nano: ~$0.012
+  - gpt-5-mini: ~$0.060
+  - gpt-5: ~$0.30
+  - gpt-4o-mini: ~$0.048
+- Memory usage: < 50MB
+- Python 3.8+ compatibility
+
+---
+
+*This specification reflects v0.03 after the major help/debug system overhaul completed on 2025-10-28.*

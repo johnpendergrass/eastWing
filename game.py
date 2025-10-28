@@ -91,7 +91,7 @@ MODEL_OPTIONS = {
     }
 }
 
-DEFAULT_MODEL = 'gpt-5-nano'
+DEFAULT_MODEL = 'gpt-5-mini'
 
 # JSON schema for structured outputs
 WALL_RESPONSE_SCHEMA = {
@@ -119,9 +119,9 @@ WALL_RESPONSE_SCHEMA = {
 
 # Stage progression configuration
 # Uses spaced numbering (10, 20, 30...) to allow inserting stages later (e.g., stage_15)
-# Separate from debug features - controlled by --faster flag
+# Two speeds: slow (default, gradual progression) and fast (quick testing)
 PROGRESSION_SPEEDS = {
-    'normal': {
+    'slow': {
         'stage_10': {  # Opening - very first response
             'start_turn': 0,
             'personality': 'mild',
@@ -207,7 +207,7 @@ notice a tourist walking by on Pennsylvania Avenue and call out to them for help
 Be slightly dramatic but also a bit sarcastic."""
 
 
-def get_system_prompt(facts, turn_count=0, progression_speed='normal'):
+def get_system_prompt(facts, turn_count=0, progression_speed='slow', mood_override=None):
     """
     Generate the system prompt with current facts, varying intensity based on turn count.
     The wall gradually becomes more intense, philosophical, and politically engaged as conversation progresses.
@@ -215,16 +215,21 @@ def get_system_prompt(facts, turn_count=0, progression_speed='normal'):
     Args:
         facts: Current facts about the East Wing
         turn_count: Number of conversation turns
-        progression_speed: 'normal' or 'fast' - determines pace of stage advancement
+        progression_speed: 'slow' or 'fast' - determines pace of stage advancement
+        mood_override: Optional mood override (mild, upset, serious, angry, tired)
 
     Returns:
         str: System prompt with appropriate intensity level
     """
 
-    # Get current stage and its personality
-    stage_key = get_current_stage(turn_count, progression_speed)
-    stage_config = PROGRESSION_SPEEDS[progression_speed][stage_key]
-    personality_type = stage_config['personality']
+    # Check for mood override first
+    if mood_override:
+        personality_type = mood_override
+    else:
+        # Get current stage and its personality based on turn count
+        stage_key = get_current_stage(turn_count, progression_speed)
+        stage_config = PROGRESSION_SPEEDS[progression_speed][stage_key]
+        personality_type = stage_config['personality']
 
     # Base introduction (same for all levels)
     base_intro = f"""You are the last remaining wall of the demolished East Wing of the White House. You were originally built in 1902 and have witnessed over a century of American history. You remember the major renovation and expansion in 1942 during World War II under President Roosevelt - that expansion made you feel useful and important during such a critical time.  In the past month you have been torn down by President Trump and his administration as part of their effort to "make America great again." There are plans to replace you with a new building, primarily a social ballroom for hosting events and parties."""
@@ -385,14 +390,14 @@ Keep total summary under 1000 words. Be terse and factual - no narrative flavor 
 This summary is your ONLY context for future turns, so capture what you'll need to remember to maintain a coherent conversation."""
 
 
-def get_random_length_instruction(turn_count, progression_speed='normal'):
+def get_random_length_instruction(turn_count, progression_speed='slow'):
     """
     Generate a length instruction based on current stage configuration.
     Uses simple uniform random selection between min and max for the stage.
 
     Args:
         turn_count: Current turn number
-        progression_speed: 'normal' or 'fast' - determines pace of stage advancement
+        progression_speed: 'slow' or 'fast' - determines pace of stage advancement
 
     Returns:
         str: Instruction for response length
@@ -416,13 +421,13 @@ def get_random_length_instruction(turn_count, progression_speed='normal'):
         return f"Reply in {target_length} sentences."
 
 
-def get_current_stage(turn_count, progression_speed='normal'):
+def get_current_stage(turn_count, progression_speed='slow'):
     """
     Get the current conversation stage based on turn count.
 
     Args:
         turn_count: Current turn number
-        progression_speed: 'normal' or 'fast' - determines pace of stage advancement
+        progression_speed: 'slow' or 'fast' - determines pace of stage advancement
 
     Returns:
         str: Stage key (e.g., 'stage_30')
@@ -711,46 +716,158 @@ def display_memory_analysis(summary_history, model=DEFAULT_MODEL):
     print(COLOR_RESET)
 
 
-def select_model_interactive(current_model):
-    """Interactive numbered menu for model selection
+# ═══════════════════════════════════════════════════════════════════════════════
+# UI / COMMAND SYSTEM
+# ═══════════════════════════════════════════════════════════════════════════════
+# All user interface, help, and command processing functions
+# This section is separate from game logic for clarity
+
+
+def parse_command(player_input):
+    """Pre-interpret player input to detect commands vs conversation
 
     Args:
-        current_model: The currently active model
+        player_input: Raw player input string
 
     Returns:
-        str: The selected model name (or current_model if cancelled)
+        tuple: (command_type, data) where command_type is:
+            - 'quit': Player wants to exit
+            - 'help': Show help screen
+            - 'speed_show': Show current speed
+            - 'speed_select': Trigger speed selection
+            - 'mood_show': Show current mood
+            - 'mood_select': Trigger mood selection
+            - 'model_show': Show current model
+            - 'model_select': Trigger model selection
+            - 'api': Show API request (brief)
+            - 'api_all': Show complete API request
+            - 'memory': Show memory analysis
+            - 'chat': Normal conversation (data = player_input)
+            - 'error': Malformed command (data = error message)
     """
-    models = list(MODEL_OPTIONS.keys())
+    text = player_input.strip().lower()
 
+    # Quit commands
+    if text in ['quit', 'exit', 'bye', 'goodbye']:
+        return ('quit', None)
+
+    # Help
+    if text == 'help':
+        return ('help', None)
+
+    # Speed commands
+    if text == 'speed':
+        return ('speed_show', None)
+    if text == 'speed ?':
+        return ('speed_select', None)
+
+    # Mood commands
+    if text == 'mood':
+        return ('mood_show', None)
+    if text == 'mood ?':
+        return ('mood_select', None)
+
+    # Model commands
+    if text == 'model':
+        return ('model_show', None)
+    if text == 'model ?':
+        return ('model_select', None)
+
+    # API commands
+    if text == 'api':
+        return ('api', None)
+    if text == 'api all':
+        return ('api_all', None)
+
+    # Memory/summary commands
+    if text in ['memory', 'summary']:
+        return ('memory', None)
+
+    # Validate common mistakes
+    words = text.split()
+    if len(words) > 0:
+        first_word = words[0]
+
+        # Check for malformed speed/mood/model commands
+        if first_word in ['speed', 'mood', 'model']:
+            if len(words) > 1 and words[1] != '?':
+                return ('error', f"Did you mean '{first_word} ?' to change the {first_word}?")
+
+        # Check for malformed api commands
+        if first_word == 'api' and len(words) == 2 and words[1] != 'all':
+            return ('error', f"'{player_input}' is not valid. Try 'api' or 'api all'.")
+
+    # Not a command - treat as conversation
+    return ('chat', player_input)
+
+
+def show_selection_menu(title, options, current_value=None):
+    """Display numbered selection menu with enhanced formatting
+
+    Args:
+        title: Menu title
+        options: List of (key, name, description) tuples
+        current_value: Currently selected key (to mark with ★)
+
+    Returns:
+        Selected key or None if cancelled
+    """
     print(f"\n{COLOR_SYSTEM}{'═' * TEXT_WIDTH}")
-    print("SELECT AI MODEL".center(TEXT_WIDTH))
+    print(title.center(TEXT_WIDTH))
     print("═" * TEXT_WIDTH + "\n")
 
-    for i, model_name in enumerate(models, 1):
-        info = MODEL_OPTIONS[model_name]
-        marker = " (current)" if model_name == current_model else ""
-        print(f"{COLOR_SYSTEM}[{i}] {model_name}{marker}{COLOR_RESET}")
-        print(f"{COLOR_SYSTEM}    {info['description']}{COLOR_RESET}")
-        print(f"{COLOR_SYSTEM}    Performance: {info['performance']} | Speed: {info['speed']} | Cost: {info['cost']}{COLOR_RESET}\n")
+    for i, (key, name, description) in enumerate(options, 1):
+        marker = " ★ CURRENT" if key == current_value else ""
+        print(f"{COLOR_SYSTEM}  [{i}] {name}{marker}{COLOR_RESET}")
+        print(f"{COLOR_SYSTEM}      → {description}{COLOR_RESET}\n")
 
-    print(f"{COLOR_SYSTEM}[0] Cancel (keep current model){COLOR_RESET}\n")
+    print(f"{COLOR_SYSTEM}  [0] Cancel{COLOR_RESET}")
+    print(f"{COLOR_SYSTEM}{'─' * TEXT_WIDTH}{COLOR_RESET}")
 
     while True:
-        choice = input(f"{COLOR_PLAYER}Select model (0-{len(models)}): {COLOR_RESET}").strip()
+        choice = input(f"{COLOR_PLAYER}Select (0-{len(options)}): {COLOR_RESET}").strip()
         if choice == '0':
-            print(f"{COLOR_SYSTEM}Keeping current model: {current_model}{COLOR_RESET}\n")
-            return current_model
+            print(f"{COLOR_SYSTEM}Cancelled.{COLOR_RESET}\n")
+            return None
         try:
             idx = int(choice) - 1
-            if 0 <= idx < len(models):
-                new_model = models[idx]
-                model_info = MODEL_OPTIONS[new_model]
-                print(f"{COLOR_SYSTEM}Switched to: {new_model}{COLOR_RESET}")
-                print(f"{COLOR_SYSTEM}  {model_info['description']}{COLOR_RESET}\n")
-                return new_model
-            print(f"{COLOR_ALERT}Invalid choice. Please enter 0-{len(models)}.{COLOR_RESET}")
+            if 0 <= idx < len(options):
+                selected_key, selected_name, _ = options[idx]
+                print(f"{COLOR_SYSTEM}Selected: {selected_name}{COLOR_RESET}\n")
+                return selected_key
+            print(f"{COLOR_ALERT}Invalid choice. Please enter 0-{len(options)}.{COLOR_RESET}")
         except ValueError:
             print(f"{COLOR_ALERT}Please enter a number.{COLOR_RESET}")
+
+
+def select_speed(current_speed):
+    """Interactive menu for speed selection"""
+    options = [
+        ('slow', 'Slow Progression', 'Stages advance gradually over 25+ turns (default)'),
+        ('fast', 'Fast Progression', 'Reach final stage quickly at turn 12 (for testing)')
+    ]
+    return show_selection_menu('SELECT GAME SPEED', options, current_speed)
+
+
+def select_mood(current_mood):
+    """Interactive menu for mood selection - sets the Wall's personality"""
+    options = [
+        ('mild', 'Mild', 'Tired and snarky, moderately bitter about current events'),
+        ('upset', 'Upset', 'More vocal and frustrated, drawing historical parallels'),
+        ('serious', 'Serious', 'Darker and philosophical, worried about democracy'),
+        ('angry', 'Angry', 'Fully engaged and intensely passionate, no longer holding back'),
+        ('tired', 'Tired', 'Exhausted and ready to end conversation, low energy')
+    ]
+    return show_selection_menu("SELECT THE WALL'S MOOD", options, current_mood)
+
+
+def select_model(current_model):
+    """Interactive menu for model selection"""
+    options = [
+        (name, name, info['description'])
+        for name, info in MODEL_OPTIONS.items()
+    ]
+    return show_selection_menu('SELECT AI MODEL', options, current_model)
 
 
 def display_startup():
@@ -759,20 +876,20 @@ def display_startup():
     print(f"{COLOR_ALERT}Type 'help' for details.{COLOR_RESET}\n")
 
 
-def display_help(debug_enabled=False, progression_speed='normal', model=DEFAULT_MODEL):
-    """Display game instructions and available commands
+def display_help(turn_count, current_mood, progression_speed, model):
+    """Display game instructions and available commands - new unified format
 
     Args:
-        debug_enabled: Whether debug mode is currently active
-        progression_speed: 'normal' or 'fast'
+        turn_count: Current turn number
+        current_mood: Current personality mood
+        progression_speed: 'slow' or 'fast'
         model: Current AI model being used
     """
     # Display current state banner
-    speed_text = "Fast" if progression_speed == 'fast' else "Normal"
-    debug_text = "ON" if debug_enabled else "OFF"
+    speed_text = "fast" if progression_speed == 'fast' else "slow"
 
     print(f"\n{COLOR_SYSTEM}{'═' * TEXT_WIDTH}")
-    print(f"CURRENT STATE: {speed_text} speed | Debug {debug_text} | Model: {model}".center(TEXT_WIDTH))
+    print(f" CURRENT STATE: Turn: {turn_count} | Mood: {current_mood} | Speed: {speed_text} | Model: {model}  ")
     print("═" * TEXT_WIDTH)
     print()
     print("HOW TO PLAY".center(TEXT_WIDTH))
@@ -782,61 +899,46 @@ def display_help(debug_enabled=False, progression_speed='normal', model=DEFAULT_
     print("• The character will respond based on your conversation")
     print("• Be curious, ask questions, share your thoughts!")
     print()
-    print("TO EXIT:")
-    print("  quit, exit, bye, goodbye, or Ctrl+C")
+    print("COMMANDS YOU MAY USE DURING THE CONVERSATION:")
     print()
-    print("COMMANDS:")
-    print("  'help'         - Show this help message")
-    print("  'speed'        - Show current progression speed")
-    print("  'mood'         - Show current mood/personality")
-    print("  'model'        - Show current model and available options")
-    print("  'change model' - Switch AI model during gameplay")
+    print("help         - show this message")
     print()
-    print("MODEL SELECTION:")
-    model_info = MODEL_OPTIONS[model]
-    print(f"  Current: {model}")
-    print(f"    {model_info['description']}")
-    print(f"    Performance: {model_info['performance']} | Speed: {model_info['speed']} | Cost: {model_info['cost']}")
+    print("quit         - any of these will quit the program")
+    print("exit")
+    print("bye, goodbye")
+    print("ctrl-c")
     print()
-    print("  Switch models anytime with 'change model' (or 'switch model'/'select model')")
-    print("  Available models:")
-    for model_name, info in MODEL_OPTIONS.items():
-        marker = " *" if model_name == model else ""
-        print(f"    {model_name}{marker} - {info['description']}")
-
-    if debug_enabled:
-        print("  'debug off' - Disable debug features")
-        print()
-        print("DEBUG COMMANDS (currently active):")
-        print("  'api'       - Show last API request (truncated)")
-        print("  'api all'   - Show complete untruncated API request")
-        print("  'memory'    - Analyze conversation summary evolution")
-        print("  'summary'   - (alias for memory)")
-        print("  'fast'      - Switch to fast progression speed")
-        print("  'normal'    - Switch to normal progression speed")
-    else:
-        print("  'debug on'  - Enable debug features")
-        print()
-        print("DEBUG FEATURES (when enabled):")
-        print("  'api'       - Show last API request (truncated)")
-        print("  'api all'   - Show complete untruncated API request")
-        print("  'memory'    - Analyze conversation summary evolution")
-        print("  'summary'   - (alias for memory)")
-        print("  'fast'      - Switch to fast progression speed")
-        print("  'normal'    - Switch to normal progression speed")
-        print("  'debug off' - Disable debug mode")
-
+    print("speed        - show current game speed")
+    print("speed ?      - change the game speed")
+    print()
+    print("mood         - show the current mood of 'the Wall'")
+    print("mood ?       - change the mood")
+    print()
+    print("model        - show current openAI model being used")
+    print("model ?      - change the AI model being used")
+    print()
+    print("api          - show the last API request (brief)")
+    print("api all      - show the complete untruncated API request")
+    print()
+    print("memory       - AI summarizes the last few exchanges")
+    print("summary        between the player and 'the Wall'.")
     print()
     print("─" * TEXT_WIDTH)
     print(COLOR_RESET)
 
 
-def get_opening_message(system_prompt, progression_speed='normal', model=DEFAULT_MODEL):
+# ═══════════════════════════════════════════════════════════════════════════════
+# GAME LOGIC
+# ═══════════════════════════════════════════════════════════════════════════════
+# Core game functions: opening message, main loop, etc.
+
+
+def get_opening_message(system_prompt, progression_speed='slow', model=DEFAULT_MODEL):
     """Generate the opening flavor text and the wall's first message
 
     Args:
         system_prompt: The system prompt to use
-        progression_speed: 'normal' or 'fast' - determines pace of stage advancement
+        progression_speed: 'slow' or 'fast' - determines pace of stage advancement
         model: OpenAI model to use for the conversation
 
     Returns:
@@ -893,37 +995,30 @@ def get_opening_message(system_prompt, progression_speed='normal', model=DEFAULT
     return wall_greeting, opening_messages, length_instruction
 
 
-def play_game(debug_enabled=False, use_fast_progression=False, model=DEFAULT_MODEL):
-    """Main game loop
+def play_game(progression_speed='slow', model=DEFAULT_MODEL):
+    """Main game loop - unified command system, no debug mode
 
     Args:
-        debug_enabled: Enable debug commands and detailed prompts
-        use_fast_progression: Use fast stage progression (9 turns vs 20 to reach final stage)
+        progression_speed: 'slow' or 'fast' - determines pace of stage advancement
         model: OpenAI model to use for the conversation
     """
     # Fetch current facts about the East Wing
     print("Fetching current information about the East Wing...")
     facts = fetch_east_wing_facts()
 
-    # Determine progression speed
-    progression_speed = 'fast' if use_fast_progression else 'normal'
-
     # Show brief startup message
     display_startup()
 
-    # Track conversation turns and summary
+    # Track conversation state
     turn_count = 0
-    current_stage = 'stage_10'  # Track which stage we're at
-    conversation_summary = ""  # Rolling summary replaces full conversation history
+    mood_override = None  # Manual mood override (None = auto-progression)
+    conversation_summary = ""  # Rolling summary
     summary_history = []  # Store last 5 summaries for meta-analysis
-    last_api_messages = []  # Store last messages sent to API for debugging
+    last_api_messages = []  # Store last messages sent to API
     last_length_instruction = ""  # Store last length instruction
-    opening_greeting = ""  # Store opening greeting for early debug display
-    opening_api_messages = []  # Store opening API messages for early debug display
-    opening_length_instruction = ""  # Store opening length instruction
 
     # Generate initial system prompt
-    system_prompt = get_system_prompt(facts, turn_count, progression_speed)
+    system_prompt = get_system_prompt(facts, turn_count, progression_speed, mood_override)
 
     # Get opening message (uses JSON schema)
     opening_greeting, opening_api_messages, opening_length_instruction = get_opening_message(system_prompt, progression_speed, model)
@@ -932,221 +1027,103 @@ def play_game(debug_enabled=False, use_fast_progression=False, model=DEFAULT_MOD
     while True:
         # Get player input
         try:
-            if debug_enabled:
-                stage_key = get_current_stage(turn_count, progression_speed)
-                personality = PROGRESSION_SPEEDS[progression_speed][stage_key]['personality']
-                player_input = input(f"YOU (debug {COLOR_DEBUG}on{COLOR_RESET}, turn {turn_count}, {personality}): ").strip()
-            else:
-                player_input = input(f"{COLOR_PLAYER}YOU: {COLOR_RESET}").strip()
+            player_input = input(f"{COLOR_PLAYER}YOU: {COLOR_RESET}").strip()
         except (EOFError, KeyboardInterrupt):
             print("\n\nThanks for playing!")
             sys.exit(0)
 
-        # Check for quit commands
-        if player_input.lower() in ['quit', 'exit', 'bye', 'goodbye']:
+        # Pre-interpret command vs conversation
+        cmd_type, cmd_data = parse_command(player_input)
+
+        # ═══ COMMAND DISPATCHER ═══
+        # Handle quit
+        if cmd_type == 'quit':
             print()
             print_wrapped("Well, I suppose I'll just stand here alone then. Typical.", "THE WALL: ", COLOR_AI)
             print("\nThanks for playing!")
             break
 
-        # Check for help command
-        if player_input.lower() == 'help':
-            display_help(debug_enabled, progression_speed, model)
+        # Handle error (malformed command)
+        if cmd_type == 'error':
+            print(f"{COLOR_ALERT}\n{cmd_data}{COLOR_RESET}\n")
             continue
 
-        # Command validation: catch malformed commands before they reach the AI
-        # Only check if input is 1-2 words (potential command)
-        words = player_input.lower().split()
-        if len(words) <= 2 and len(words) > 0:
-            first_word = words[0]
-
-            # Check for malformed 'debug' commands
-            if first_word == 'debug':
-                if len(words) == 1:
-                    print(f"{COLOR_ALERT}\nPlease specify 'debug on' or 'debug off'.{COLOR_RESET}\n")
-                    continue
-                elif len(words) == 2 and words[1] not in ['on', 'off']:
-                    print(f"{COLOR_ALERT}\n'debug {words[1]}' is not valid. Please use 'debug on' or 'debug off'.{COLOR_RESET}\n")
-                    continue
-
-            # Check for malformed 'api' commands
-            elif first_word == 'api':
-                if len(words) == 2 and words[1] != 'all':
-                    print(f"{COLOR_ALERT}\n'api {words[1]}' is not a valid command. Try 'api' or 'api all'.{COLOR_RESET}\n")
-                    continue
-
-            # Check for malformed single-word commands
-            elif first_word in ['fast', 'normal', 'memory', 'summary', 'speed', 'mood', 'model']:
-                if len(words) > 1:
-                    print(f"{COLOR_ALERT}\n'{first_word}' should be used alone. Try just '{first_word}'.{COLOR_RESET}\n")
-                    continue
-
-            # Check for malformed 'change/switch/select model' commands
-            elif first_word in ['change', 'switch', 'select']:
-                if len(words) == 1:
-                    print(f"{COLOR_ALERT}\n'{first_word}' is incomplete. Did you mean '{first_word} model'?{COLOR_RESET}\n")
-                    continue
-                elif len(words) == 2 and words[1] != 'model':
-                    print(f"{COLOR_ALERT}\n'{player_input}' is not a valid command. Try '{first_word} model'.{COLOR_RESET}\n")
-                    continue
-                elif len(words) > 2:
-                    print(f"{COLOR_ALERT}\n'{first_word} model' should not have extra arguments. Try just '{first_word} model'.{COLOR_RESET}\n")
-                    continue
-
-        # Check for 'speed' command - shows current progression speed
-        if player_input.lower() == 'speed':
-            current_speed = "Fast" if progression_speed == 'fast' else "Normal"
-            print(f"{COLOR_SYSTEM}\nThe game's current progression speed: {current_speed}{COLOR_RESET}")
-            if debug_enabled:
-                print(f"{COLOR_SYSTEM}[Use 'fast' or 'normal' to change speed]{COLOR_RESET}\n")
-            else:
-                print(f"{COLOR_SYSTEM}[Enable debug mode with 'debug on' to change speed]{COLOR_RESET}\n")
+        # Handle help
+        if cmd_type == 'help':
+            current_mood = mood_override if mood_override else PROGRESSION_SPEEDS[progression_speed][get_current_stage(turn_count, progression_speed)]['personality']
+            display_help(turn_count, current_mood, progression_speed, model)
             continue
 
-        # Check for 'mood' command - shows current mood/personality
-        if player_input.lower() == 'mood':
-            current_stage = get_current_stage(turn_count, progression_speed)
-            current_personality = PROGRESSION_SPEEDS[progression_speed][current_stage]['personality']
-            print(f"{COLOR_SYSTEM}\nThe wall's current mood is: {current_personality}{COLOR_RESET}\n")
+        # Handle speed show
+        if cmd_type == 'speed_show':
+            print(f"{COLOR_SYSTEM}\nCurrent game speed: {progression_speed}{COLOR_RESET}\n")
             continue
 
-        # Check for 'model' command - shows current model and available options
-        if player_input.lower() == 'model':
-            print(f"{COLOR_SYSTEM}\nCURRENT MODEL: {model}{COLOR_RESET}")
+        # Handle speed select
+        if cmd_type == 'speed_select':
+            new_speed = select_speed(progression_speed)
+            if new_speed and new_speed != progression_speed:
+                progression_speed = new_speed
+                # Regenerate system prompt if needed
+                system_prompt = get_system_prompt(facts, turn_count, progression_speed, mood_override)
+            continue
+
+        # Handle mood show
+        if cmd_type == 'mood_show':
+            current_mood = mood_override if mood_override else PROGRESSION_SPEEDS[progression_speed][get_current_stage(turn_count, progression_speed)]['personality']
+            print(f"{COLOR_SYSTEM}\nThe Wall's current mood: {current_mood}{COLOR_RESET}\n")
+            continue
+
+        # Handle mood select
+        if cmd_type == 'mood_select':
+            current_mood = mood_override if mood_override else PROGRESSION_SPEEDS[progression_speed][get_current_stage(turn_count, progression_speed)]['personality']
+            new_mood = select_mood(current_mood)
+            if new_mood:
+                mood_override = new_mood
+                # Regenerate system prompt with new mood
+                system_prompt = get_system_prompt(facts, turn_count, progression_speed, mood_override)
+            continue
+
+        # Handle model show
+        if cmd_type == 'model_show':
             model_info = MODEL_OPTIONS[model]
+            print(f"{COLOR_SYSTEM}\nCurrent model: {model}{COLOR_RESET}")
             print(f"{COLOR_SYSTEM}  {model_info['description']}{COLOR_RESET}")
             print(f"{COLOR_SYSTEM}  Performance: {model_info['performance']} | Speed: {model_info['speed']} | Cost: {model_info['cost']}{COLOR_RESET}\n")
-
-            print(f"{COLOR_SYSTEM}AVAILABLE MODELS:{COLOR_RESET}")
-            for model_name, info in MODEL_OPTIONS.items():
-                marker = " (current)" if model_name == model else ""
-                print(f"{COLOR_SYSTEM}  {model_name}{marker}{COLOR_RESET}")
-                print(f"{COLOR_SYSTEM}    {info['description']}{COLOR_RESET}")
-                print(f"{COLOR_SYSTEM}    [Performance: {info['performance']} | Speed: {info['speed']} | Cost: {info['cost']}]{COLOR_RESET}")
-                print()
-
-            print(f"{COLOR_SYSTEM}To change models during gameplay, type 'change model'{COLOR_RESET}\n")
             continue
 
-        # Check for 'change model' / 'switch model' / 'select model' commands
-        if player_input.lower() in ['change model', 'switch model', 'select model']:
-            new_model = select_model_interactive(model)
-            if new_model != model:
+        # Handle model select
+        if cmd_type == 'model_select':
+            new_model = select_model(model)
+            if new_model:
                 model = new_model
             continue
 
-        # Check for debug toggle commands
-        if player_input.lower() == 'debug on':
-            if not debug_enabled:
-                debug_enabled = True
-                print(f"{COLOR_SYSTEM}\nDebug mode enabled. Type 'help' to see debug commands.{COLOR_RESET}\n")
-            else:
-                print(f"{COLOR_SYSTEM}\nDebug mode is already enabled.{COLOR_RESET}\n")
-            continue
-
-        if player_input.lower() == 'debug off':
-            if debug_enabled:
-                debug_enabled = False
-                print(f"{COLOR_SYSTEM}\nDebug mode disabled.{COLOR_RESET}\n")
-            else:
-                print(f"{COLOR_SYSTEM}\nDebug mode is already disabled.{COLOR_RESET}\n")
-            continue
-
-        # Check for speed switch commands (requires debug mode)
-        if player_input.lower() == 'fast':
-            if not debug_enabled:
-                print(f"{COLOR_ALERT}\n'fast' does not work unless you are in debug mode. [hint: to switch to debug mode, type 'debug on']{COLOR_RESET}\n")
-                continue
-            if progression_speed == 'fast':
-                print(f"{COLOR_SYSTEM}\nProgression speed is already set to 'fast'.{COLOR_RESET}\n")
-            else:
-                # Calculate old and new stages
-                old_stage = get_current_stage(turn_count, progression_speed)
-                progression_speed = 'fast'
-                new_stage = get_current_stage(turn_count, progression_speed)
-
-                # Get personality for display
-                new_personality = PROGRESSION_SPEEDS[progression_speed][new_stage]['personality']
-
-                # If stage changed, regenerate system prompt
-                if new_stage != old_stage:
-                    current_stage = new_stage
-                    system_prompt = get_system_prompt(facts, turn_count, progression_speed)
-
-                print(f"{COLOR_SYSTEM}\nTurn {turn_count}. Progression speed changed to 'fast'. Mood is: {new_personality}.{COLOR_RESET}\n")
-            continue
-
-        if player_input.lower() == 'normal':
-            if not debug_enabled:
-                print(f"{COLOR_ALERT}\n'normal' does not work unless you are in debug mode. [hint: to switch to debug mode, type 'debug on']{COLOR_RESET}\n")
-                continue
-            if progression_speed == 'normal':
-                print(f"{COLOR_SYSTEM}\nProgression speed is already set to 'normal'.{COLOR_RESET}\n")
-            else:
-                # Calculate old and new stages
-                old_stage = get_current_stage(turn_count, progression_speed)
-                progression_speed = 'normal'
-                new_stage = get_current_stage(turn_count, progression_speed)
-
-                # Get personality for display
-                new_personality = PROGRESSION_SPEEDS[progression_speed][new_stage]['personality']
-
-                # If stage changed, regenerate system prompt
-                if new_stage != old_stage:
-                    current_stage = new_stage
-                    system_prompt = get_system_prompt(facts, turn_count, progression_speed)
-
-                print(f"{COLOR_SYSTEM}\nTurn {turn_count}. Progression speed changed to 'normal'. Mood is: {new_personality}.{COLOR_RESET}\n")
-            continue
-
-        # Check for debug command to show API details (full, untruncated)
-        if player_input.lower() == 'api all':
-            if not debug_enabled:
-                print(f"{COLOR_ALERT}\n'api all' does not work unless you are in debug mode. [hint: to switch to debug mode, type 'debug on']{COLOR_RESET}\n")
-                continue
-            if last_api_messages:
-                display_api_debug_info(last_api_messages, last_length_instruction, truncate=False)
-            elif opening_api_messages:
-                print(f"{COLOR_DEBUG}\n[Showing opening message API call - no conversation turns yet]\n{COLOR_RESET}")
-                display_api_debug_info(opening_api_messages, opening_length_instruction, truncate=False)
-            else:
-                print(f"{COLOR_DEBUG}\nNo API requests have been made yet.\n{COLOR_RESET}")
-            continue
-
-        # Check for debug command to show API details (truncated)
-        if player_input.lower() == 'api':
-            if not debug_enabled:
-                print(f"{COLOR_ALERT}\n'api' does not work unless you are in debug mode. [hint: to switch to debug mode, type 'debug on']{COLOR_RESET}\n")
-                continue
+        # Handle API debug
+        if cmd_type == 'api':
             if last_api_messages:
                 display_api_debug_info(last_api_messages, last_length_instruction, truncate=True)
-            elif opening_api_messages:
-                print(f"{COLOR_DEBUG}\n[Showing opening message API call - no conversation turns yet]\n{COLOR_RESET}")
-                display_api_debug_info(opening_api_messages, opening_length_instruction, truncate=True)
             else:
-                print(f"{COLOR_DEBUG}\nNo API requests have been made yet.\n{COLOR_RESET}")
+                print(f"{COLOR_DEBUG}\nNo API calls made yet.{COLOR_RESET}\n")
             continue
 
-        # Check for debug command to show memory evolution analysis
-        if player_input.lower() in ['memory', 'summary']:
-            if not debug_enabled:
-                print(f"{COLOR_ALERT}\n'{player_input.lower()}' does not work unless you are in debug mode. [hint: to switch to debug mode, type 'debug on']{COLOR_RESET}\n")
-                continue
+        if cmd_type == 'api_all':
+            if last_api_messages:
+                display_api_debug_info(last_api_messages, last_length_instruction, truncate=False)
+            else:
+                print(f"{COLOR_DEBUG}\nNo API calls made yet.{COLOR_RESET}\n")
+            continue
+
+        # Handle memory analysis
+        if cmd_type == 'memory':
             if summary_history:
                 display_memory_analysis(summary_history, model)
-            elif conversation_summary:
-                # Show current summary if no history yet
-                print(f"\n{COLOR_DEBUG}{'=' * TEXT_WIDTH}")
-                print("CURRENT CONVERSATION SUMMARY".center(TEXT_WIDTH))
-                print("=" * TEXT_WIDTH + "\n")
-                wrapper = textwrap.TextWrapper(width=TEXT_WIDTH, break_long_words=False, break_on_hyphens=False)
-                for line in wrapper.wrap(conversation_summary):
-                    print(line)
-                print("\n" + "=" * TEXT_WIDTH)
-                print(f"[Only 1 turn - need at least 2 for evolution analysis]{COLOR_RESET}\n")
             else:
-                print(f"{COLOR_DEBUG}\nNo conversation history yet. Play a few turns first! (use 'api' to see opening message)\n{COLOR_RESET}")
+                print(f"{COLOR_DEBUG}\nNo conversation history yet (need at least 2 turns).{COLOR_RESET}\n")
             continue
+
+        # ═══ CONVERSATION LOGIC ═══
+        # cmd_type == 'chat' - proceed with normal conversation
 
         # Skip empty input
         if not player_input:
@@ -1207,10 +1184,10 @@ def play_game(debug_enabled=False, use_fast_progression=False, model=DEFAULT_MOD
             # Check if we've crossed into a new stage
             new_stage = get_current_stage(turn_count, progression_speed)
 
-            # If stage has changed, regenerate the system prompt
-            if new_stage != current_stage:
+            # If stage has changed (and no manual mood override), regenerate the system prompt
+            if new_stage != current_stage and not mood_override:
                 current_stage = new_stage
-                system_prompt = get_system_prompt(facts, turn_count, progression_speed)
+                system_prompt = get_system_prompt(facts, turn_count, progression_speed, mood_override)
 
             # Display response
             print_separator()
@@ -1234,32 +1211,31 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
-        '-d', '--debug',
-        action='store_true',
-        help='Enable debug features:\n'
-             '  - Show turn count and personality level in prompt\n'
-             '  - Access to debug commands: "api", "memory"/"summary"\n'
-             '  - Can also be toggled during gameplay with "debug on/off"\n'
-             '  - Type "help" during gameplay for full command list'
-    )
-    parser.add_argument(
         '-f', '--fast',
         action='store_true',
         help='Use fast stage progression:\n'
-             '  - Stages advance quicker (stage_50 reached at turn 9 vs turn 20)\n'
-             '  - Can also be toggled during gameplay with "fast"/"normal" commands\n'
+             '  - Stages advance quickly (reach final stage at turn 12)\n'
+             '  - Can be changed during gameplay with "speed ?" command\n'
              '  - Useful for testing different personality levels'
+    )
+    parser.add_argument(
+        '-s', '--slow',
+        action='store_true',
+        help='Use slow stage progression (default):\n'
+             '  - Stages advance gradually over 25+ turns\n'
+             '  - Can be changed during gameplay with "speed ?" command\n'
+             '  - Provides full conversation experience'
     )
     parser.add_argument(
         '--model',
         type=str,
         default=DEFAULT_MODEL,
         help='Select AI model to use:\n'
-             '  - gpt-5-nano: Fastest, cheapest, good quality (default)\n'
-             '  - gpt-5-mini: Excellent quality, fast, moderate cost\n'
+             '  - gpt-5-mini: Excellent quality, fast, moderate cost (default)\n'
+             '  - gpt-5-nano: Fastest, cheapest, good quality\n'
              '  - gpt-5: Best quality, slower, most expensive\n'
              '  - gpt-4o-mini: Legacy model, good quality, low cost\n'
-             '  - Type "model" during gameplay to see current model'
+             '  - Change during gameplay with "model ?" command'
     )
     args = parser.parse_args()
 
@@ -1282,8 +1258,14 @@ def main():
         print("See .env.example for the format.")
         sys.exit(1)
 
+    # Determine progression speed from flags (default is slow)
+    if args.fast:
+        progression_speed = 'fast'
+    else:
+        progression_speed = 'slow'  # Default, even if --slow not specified
+
     try:
-        play_game(debug_enabled=args.debug, use_fast_progression=args.fast, model=model_to_use)
+        play_game(progression_speed=progression_speed, model=model_to_use)
     except KeyboardInterrupt:
         print("\n\nThanks for playing!")
         sys.exit(0)
