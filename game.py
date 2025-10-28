@@ -23,32 +23,55 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 MODEL = "gpt-4o-mini"  # Using the affordable mini model
 TEXT_WIDTH = 72  # Width for text wrapping
 
-# ANSI color codes for terminal output
-# Customize these to change the visual style of the game
+# ANSI color codes - Dynamic theme system
+# Users can switch themes with 'color ?' command during gameplay
 
-# System text (help, instructions, messages) - uncomment your preferred option
-# COLOR_SYSTEM = "\033[96m"  # Bright cyan - clear, informational
-COLOR_SYSTEM = "\033[94m"  # Light blue - calm, professional
-# COLOR_SYSTEM = "\033[37m"  # Light gray - subtle, understated
+COLOR_THEMES = {
+    'white-house': {
+        'description': 'Classic elegant whites and grays (default)',
+        'COLOR_SYSTEM': '\033[37m',   # Light gray - subtle, professional
+        'COLOR_PLAYER': '\033[0m',    # Default terminal color
+        'COLOR_AI': '\033[97m',       # Bright white - clean, clear
+        'COLOR_ALERT': '\033[93m'     # Yellow - attention-grabbing
+    },
+    'mar-a-lago': {
+        'description': 'Garish gold and yellow (tacky luxury)',
+        'COLOR_SYSTEM': '\033[93m',   # Bright yellow - gaudy
+        'COLOR_PLAYER': '\033[0m',    # Default terminal color
+        'COLOR_AI': '\033[33m',       # Yellow/orange - ostentatious
+        'COLOR_ALERT': '\033[91m'     # Bright red - loud
+    },
+    'east-wing': {
+        'description': 'Calm blues and whites (peaceful)',
+        'COLOR_SYSTEM': '\033[94m',   # Light blue - calm, professional
+        'COLOR_PLAYER': '\033[0m',    # Default terminal color
+        'COLOR_AI': '\033[97m',       # Bright white - subtle
+        'COLOR_ALERT': '\033[93m'     # Yellow - attention
+    },
+    'matrix': {
+        'description': 'Green terminal aesthetic (retro tech)',
+        'COLOR_SYSTEM': '\033[92m',   # Light green - terminal style
+        'COLOR_PLAYER': '\033[0m',    # Default terminal color
+        'COLOR_AI': '\033[32m',       # Green - classic Matrix
+        'COLOR_ALERT': '\033[91m'     # Bright red - urgent
+    },
+    'monochrome': {
+        'description': 'Simple grayscale (no colors)',
+        'COLOR_SYSTEM': '\033[37m',   # Light gray
+        'COLOR_PLAYER': '\033[0m',    # Default terminal color
+        'COLOR_AI': '\033[97m',       # Bright white
+        'COLOR_ALERT': '\033[37m'     # Light gray (same as system)
+    }
+}
 
-# Player input prompt
-COLOR_PLAYER = "\033[0m"   # Default terminal color
+# Default theme
+DEFAULT_COLOR_THEME = 'white-house'
 
-# AI response color - uncomment your preferred option
-# COLOR_AI = "\033[92m"      # Light green - friendly, easy on eyes
-# COLOR_AI = "\033[94m"    # Light blue - calm, professional
-# COLOR_AI = "\033[93m"    # Light yellow - warm, inviting
-# COLOR_AI = "\033[95m"    # Bright magenta - bold, distinctive
-COLOR_AI = "\033[97m"      # Bright white (current) - subtle enhancement
-
-# Debug command output (api, memory, summary)
-COLOR_DEBUG = "\033[36m"   # Cyan - technical, distinct from system
-
-# Alert/warning color - uncomment your preferred option
-COLOR_ALERT = "\033[93m"   # Bright yellow - attention-grabbing
-# COLOR_ALERT = "\033[91m"   # Bright red - urgent
-# COLOR_ALERT = "\033[95m"   # Bright magenta - distinctive
-
+# Initialize color variables (can be changed at runtime)
+COLOR_SYSTEM = COLOR_THEMES[DEFAULT_COLOR_THEME]['COLOR_SYSTEM']
+COLOR_PLAYER = COLOR_THEMES[DEFAULT_COLOR_THEME]['COLOR_PLAYER']
+COLOR_AI = COLOR_THEMES[DEFAULT_COLOR_THEME]['COLOR_AI']
+COLOR_ALERT = COLOR_THEMES[DEFAULT_COLOR_THEME]['COLOR_ALERT']
 COLOR_RESET = "\033[0m"    # Reset to default terminal color
 
 # Model configuration and options
@@ -331,7 +354,8 @@ CURRENT FACTS ABOUT THE EAST WING (use this information naturally in conversatio
 {facts}
 
 CONVERSATION STYLE - VERY IMPORTANT:
-- VARY your response length naturally: sometimes just one sentence (when tired/annoyed), sometimes 2-3 sentences (when engaged or nostalgic)
+- VARY your response length naturally: sometimes very brief, around 15-25 words (when tired/annoyed), sometimes longer, around 50-80 words (when engaged or nostalgic)
+- The word count is a TARGET, not a hard limit - ALWAYS complete your full sentences and thoughts. It's better to exceed the word count than to cut off mid-sentence or leave a thought incomplete.
 - Match your response complexity to the player's input - simple questions deserve simple answers
 - DON'T ask questions every response - only occasionally when genuinely curious
 - SOMETIMES use open-ended statements that invite response without being questions:
@@ -541,6 +565,29 @@ def validate_model(model_name):
         return (DEFAULT_MODEL, False)
 
 
+def set_color_theme(theme_name):
+    """Set the active color theme by updating global color variables.
+
+    Args:
+        theme_name: Name of theme from COLOR_THEMES dict
+
+    Returns:
+        bool: True if theme was valid and applied
+    """
+    global COLOR_SYSTEM, COLOR_PLAYER, COLOR_AI, COLOR_ALERT
+
+    if theme_name not in COLOR_THEMES:
+        return False
+
+    theme = COLOR_THEMES[theme_name]
+    COLOR_SYSTEM = theme['COLOR_SYSTEM']
+    COLOR_PLAYER = theme['COLOR_PLAYER']
+    COLOR_AI = theme['COLOR_AI']
+    COLOR_ALERT = theme['COLOR_ALERT']
+
+    return True
+
+
 def print_separator():
     """Print a visual separator"""
     print("\n" + "─" * TEXT_WIDTH + "\n")
@@ -594,7 +641,7 @@ def display_api_debug_info(messages, length_instruction, truncate=True):
         length_instruction: The length instruction used
         truncate: If True, truncate long messages at 500 chars (default True)
     """
-    print(f"\n{COLOR_DEBUG}{'=' * TEXT_WIDTH}")
+    print(f"\n{COLOR_SYSTEM}{'=' * TEXT_WIDTH}")
     if truncate:
         print("LAST API REQUEST DETAILS (TRUNCATED)".center(TEXT_WIDTH))
     else:
@@ -611,7 +658,7 @@ def display_api_debug_info(messages, length_instruction, truncate=True):
         if truncate and len(content) > 500:
             print(f"{content[:500]}...")
             print(f"\n[Truncated - Full length: {len(content)} characters]")
-            print(f"{COLOR_ALERT}*** Type 'api all' to see the full {len(content)} character message - it is long! ***{COLOR_DEBUG}")
+            print(f"{COLOR_ALERT}*** Type 'api all' to see the full {len(content)} character message - it is long! ***{COLOR_SYSTEM}")
         else:
             print(content)
 
@@ -692,7 +739,7 @@ Be objective and analytical. Focus on factual content rather than emotional inte
 
 def display_memory_analysis(summary_history, model=DEFAULT_MODEL):
     """Display the meta-analysis of summary evolution"""
-    print(f"\n{COLOR_DEBUG}{'=' * TEXT_WIDTH}")
+    print(f"\n{COLOR_SYSTEM}{'=' * TEXT_WIDTH}")
     print("CONVERSATION MEMORY EVOLUTION".center(TEXT_WIDTH))
     print("=" * TEXT_WIDTH + "\n")
 
@@ -736,6 +783,8 @@ def parse_command(player_input):
             - 'mood_select': Trigger mood selection
             - 'model_show': Show current model
             - 'model_select': Trigger model selection
+            - 'color_show': Show current color theme
+            - 'color_select': Trigger color theme selection
             - 'api': Show API request (brief)
             - 'api_all': Show complete API request
             - 'memory': Show memory analysis
@@ -750,6 +799,26 @@ def parse_command(player_input):
 
     # Help
     if text == 'help':
+        return ('help', None)
+
+    # Help shortcuts - map to specific commands
+    if text == 'help speed':
+        return ('speed_select', None)
+    if text == 'help mood':
+        return ('mood_select', None)
+    if text == 'help model':
+        return ('model_select', None)
+    if text == 'help color':
+        return ('color_select', None)
+    if text == 'help api all':
+        return ('api_all', None)
+    if text == 'help api':
+        return ('api', None)
+    if text in ['help memory', 'help summary']:
+        return ('memory', None)
+
+    # Catch-all: any other "help <anything>" shows help screen
+    if text.startswith('help '):
         return ('help', None)
 
     # Speed commands
@@ -770,6 +839,12 @@ def parse_command(player_input):
     if text == 'model ?':
         return ('model_select', None)
 
+    # Color theme commands
+    if text == 'color':
+        return ('color_show', None)
+    if text == 'color ?':
+        return ('color_select', None)
+
     # API commands
     if text == 'api':
         return ('api', None)
@@ -785,8 +860,8 @@ def parse_command(player_input):
     if len(words) > 0:
         first_word = words[0]
 
-        # Check for malformed speed/mood/model commands
-        if first_word in ['speed', 'mood', 'model']:
+        # Check for malformed speed/mood/model/color commands
+        if first_word in ['speed', 'mood', 'model', 'color']:
             if len(words) > 1 and words[1] != '?':
                 return ('error', f"Did you mean '{first_word} ?' to change the {first_word}?")
 
@@ -840,8 +915,8 @@ def show_selection_menu(title, options, current_value=None):
 def select_speed(current_speed):
     """Interactive menu for speed selection"""
     options = [
-        ('slow', 'Slow Progression', 'Stages advance gradually over 25+ turns (default)'),
-        ('fast', 'Fast Progression', 'Reach final stage quickly at turn 12 (for testing)')
+        ('slow', 'Slow Progression', 'Game advance gradually over 25+ turns'),
+        ('fast', 'Fast Progression', 'Game reaches final stage quickly over 12+ turns')
     ]
     return show_selection_menu('SELECT GAME SPEED', options, current_speed)
 
@@ -867,10 +942,18 @@ def select_model(current_model):
     return show_selection_menu('SELECT AI MODEL', options, current_model)
 
 
+def select_color_theme(current_theme):
+    """Interactive menu for color theme selection"""
+    options = [
+        (name, name.replace('-', ' ').title(), info['description'])
+        for name, info in COLOR_THEMES.items()
+    ]
+    return show_selection_menu('SELECT COLOR THEME', options, current_theme)
+
+
 def display_startup():
     """Display brief startup message"""
-    print(f"\n{COLOR_SYSTEM}A conversation with The East Wing")
-    print(f"{COLOR_ALERT}Type 'help' for details.{COLOR_RESET}\n")
+    print(f"{COLOR_ALERT}Type 'help' to switch models, speeds, moods, and colors.{COLOR_RESET}\n")
 
 
 def display_help(turn_count, current_mood, progression_speed, model):
@@ -914,6 +997,9 @@ def display_help(turn_count, current_mood, progression_speed, model):
     print("model        - show current openAI model being used")
     print("model ?      - change the AI model being used")
     print()
+    print("color        - show current color theme")
+    print("color ?      - change the color theme")
+    print()
     print("api          - show the last API request (brief)")
     print("api all      - show the complete untruncated API request")
     print()
@@ -945,9 +1031,8 @@ def get_opening_message(system_prompt, progression_speed='slow', model=DEFAULT_M
     print("THE EAST WING".center(TEXT_WIDTH))
     print("═" * TEXT_WIDTH)
     print()
-    print("You are visiting Washington DC to see the sights. You're a history")
-    print("buff who knows a lot about American history, presidencies, and")
-    print("particularly historical architecture.")
+    print("You are a tourist visiting Washington DC to see the sights. A history ")
+    print("nerd, you can't wait to see all of the historical buildings.")
     print()
     print("You are wandering down Pennsylvania Ave to check out the White House")
     print("and nearby buildings. You notice the East Wing of the White House")
@@ -955,6 +1040,8 @@ def get_opening_message(system_prompt, progression_speed='slow', model=DEFAULT_M
     print()
     print("You are surprised when the wall speaks to you...")
     print(COLOR_RESET)
+    print()
+    print(f"{COLOR_ALERT}⏱ Note: AI responses may take 5-10 seconds (or longer!). Please be patient...{COLOR_RESET}")
     print_separator()
 
     # Get the wall's opening line from the API
@@ -1002,6 +1089,7 @@ def play_game(progression_speed='slow', model=DEFAULT_MODEL):
     # Fetch current facts about the East Wing
     print("Fetching current information about the East Wing...")
     facts = fetch_east_wing_facts()
+    print()  # Blank line
 
     # Show brief startup message
     display_startup()
@@ -1014,6 +1102,7 @@ def play_game(progression_speed='slow', model=DEFAULT_MODEL):
     last_api_messages = []  # Store last messages sent to API
     last_length_instruction = ""  # Store last length instruction
     current_stage = get_current_stage(0, progression_speed)  # Track current stage for progression
+    current_color_theme = DEFAULT_COLOR_THEME  # Track current color theme
 
     # Generate initial system prompt
     system_prompt = get_system_prompt(facts, turn_count, progression_speed, mood_override)
@@ -1097,19 +1186,35 @@ def play_game(progression_speed='slow', model=DEFAULT_MODEL):
                 model = new_model
             continue
 
+        # Handle color show
+        if cmd_type == 'color_show':
+            theme_info = COLOR_THEMES[current_color_theme]
+            print(f"{COLOR_SYSTEM}\nCurrent color theme: {current_color_theme.replace('-', ' ').title()}{COLOR_RESET}")
+            print(f"{COLOR_SYSTEM}  {theme_info['description']}{COLOR_RESET}\n")
+            continue
+
+        # Handle color select
+        if cmd_type == 'color_select':
+            new_theme = select_color_theme(current_color_theme)
+            if new_theme:
+                current_color_theme = new_theme
+                set_color_theme(new_theme)
+                print(f"{COLOR_SYSTEM}Color theme changed to: {new_theme.replace('-', ' ').title()}{COLOR_RESET}\n")
+            continue
+
         # Handle API debug
         if cmd_type == 'api':
             if last_api_messages:
                 display_api_debug_info(last_api_messages, last_length_instruction, truncate=True)
             else:
-                print(f"{COLOR_DEBUG}\nNo API calls made yet.{COLOR_RESET}\n")
+                print(f"{COLOR_SYSTEM}\nNo API calls made yet.{COLOR_RESET}\n")
             continue
 
         if cmd_type == 'api_all':
             if last_api_messages:
                 display_api_debug_info(last_api_messages, last_length_instruction, truncate=False)
             else:
-                print(f"{COLOR_DEBUG}\nNo API calls made yet.{COLOR_RESET}\n")
+                print(f"{COLOR_SYSTEM}\nNo API calls made yet.{COLOR_RESET}\n")
             continue
 
         # Handle memory analysis
@@ -1117,7 +1222,7 @@ def play_game(progression_speed='slow', model=DEFAULT_MODEL):
             if summary_history:
                 display_memory_analysis(summary_history, model)
             else:
-                print(f"{COLOR_DEBUG}\nNo conversation history yet (need at least 2 turns).{COLOR_RESET}\n")
+                print(f"{COLOR_SYSTEM}\nNo conversation history yet (need at least 2 turns).{COLOR_RESET}\n")
             continue
 
         # ═══ CONVERSATION LOGIC ═══
@@ -1243,11 +1348,9 @@ def main():
     if not is_valid:
         print(f"{COLOR_ALERT}Error: '{args.model}' is not a valid model.{COLOR_RESET}")
         print(f"{COLOR_ALERT}Available models: {', '.join(MODEL_OPTIONS.keys())}{COLOR_RESET}")
-        print(f"{COLOR_SYSTEM}Using default model: {model_to_use}{COLOR_RESET}\n")
+        print(f"{COLOR_ALERT}Using default model: {model_to_use}{COLOR_RESET}")
     else:
-        model_info = MODEL_OPTIONS[model_to_use]
-        print(f"{COLOR_SYSTEM}Using model: {model_to_use}{COLOR_RESET}")
-        print(f"{COLOR_SYSTEM}  {model_info['description']}{COLOR_RESET}\n")
+        print(f"{COLOR_ALERT}Using model: {model_to_use}{COLOR_RESET}")
 
     # Check for API key
     if not os.getenv("OPENAI_API_KEY"):
@@ -1261,6 +1364,10 @@ def main():
         progression_speed = 'fast'
     else:
         progression_speed = 'slow'  # Default, even if --slow not specified
+
+    # Display current speed
+    print(f"{COLOR_ALERT}Current game speed: {progression_speed}{COLOR_RESET}")
+    print()  # Blank line
 
     try:
         play_game(progression_speed=progression_speed, model=model_to_use)
