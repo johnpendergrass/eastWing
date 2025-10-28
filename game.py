@@ -21,7 +21,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Game configuration
 MODEL = "gpt-4o-mini"  # Using the affordable mini model
-TEXT_WIDTH = 60  # Width for text wrapping
+TEXT_WIDTH = 72  # Width for text wrapping
 
 # ANSI color codes for terminal output
 # Customize these to change the visual style of the game
@@ -120,81 +120,82 @@ WALL_RESPONSE_SCHEMA = {
 # Stage progression configuration
 # Uses spaced numbering (10, 20, 30...) to allow inserting stages later (e.g., stage_15)
 # Two speeds: slow (default, gradual progression) and fast (quick testing)
+# Word counts ensure natural conversation flow without gaming sentence length
 PROGRESSION_SPEEDS = {
     'slow': {
         'stage_10': {  # Opening - very first response
             'start_turn': 0,
             'personality': 'mild',
-            'reply_length_min': 2,
-            'reply_length_max': 2
+            'reply_words_min': 30,
+            'reply_words_max': 40
         },
         'stage_20': {  # Early conversation - still reserved
             'start_turn': 1,
             'personality': 'mild',
-            'reply_length_min': 1,
-            'reply_length_max': 4
+            'reply_words_min': 15,
+            'reply_words_max': 85
         },
         'stage_30': {  # Mid conversation - opening up
             'start_turn': 5,
             'personality': 'upset',
-            'reply_length_min': 2,
-            'reply_length_max': 5
+            'reply_words_min': 30,
+            'reply_words_max': 105
         },
         'stage_40': {  # Late conversation - getting serious
             'start_turn': 8,
             'personality': 'serious',
-            'reply_length_min': 2,
-            'reply_length_max': 6
+            'reply_words_min': 30,
+            'reply_words_max': 125
         },
         'stage_50': {  # Final stage - fully engaged
             'start_turn': 10,
             'personality': 'angry',
-            'reply_length_min': 2,
-            'reply_length_max': 7
+            'reply_words_min': 30,
+            'reply_words_max': 145
         },
         'stage_90': {  # Wind-down stage - exhausted
             'start_turn': 15,
             'personality': 'tired',
-            'reply_length_min': 2,
-            'reply_length_max': 4
+            'reply_words_min': 30,
+            'reply_words_max': 85
         }
     },
     'fast': {
         'stage_10': {  # Opening
             'start_turn': 0,
             'personality': 'mild',
-            'reply_length_min': 2,
-            'reply_length_max': 2
+            'reply_words_min': 30,
+            'reply_words_max': 40
         },
         'stage_20': {  # Early conversation - faster progression
             'start_turn': 1,
             'personality': 'mild',
-            'reply_length_min': 1,
-            'reply_length_max': 4
+            'reply_words_min': 15,
+            'reply_words_max': 85
         },
         'stage_30': {  # Mid conversation
             'start_turn': 3,
             'personality': 'medium',
-            'reply_length_min': 2,
-            'reply_length_max': 5
+            'reply_words_min': 30,
+            'reply_words_max': 105
         },
         'stage_40': {  # Late conversation
             'start_turn': 5,
             'personality': 'serious',
-            'reply_length_min': 2,
-            'reply_length_max': 6
+            'reply_words_min': 30,
+            'reply_words_max': 125
         },
         'stage_50': {  # Final stage
             'start_turn': 7,
             'personality': 'angry',
-            'reply_length_min': 2,
-            'reply_length_max': 7
+            'reply_words_min': 30,
+            'reply_words_max': 145
         },
         'stage_90': {  # Wind-down stage - exhausted
             'start_turn': 12,
             'personality': 'tired',
-            'reply_length_min': 2,
-            'reply_length_max': 4
+            'reply_words_min': 30,
+            'reply_words_max': 85
         }
     }
 }
@@ -202,7 +203,7 @@ PROGRESSION_SPEEDS = {
 # Fallback facts if Tavily is unavailable
 FALLBACK_FACTS = """The East Wing of the White House was originally built in 1908. It was extensivly remodeled in 1942 during World War II to provide additional office space. It houses the First Lady's staff and the White House Social Secretary. The East Wing has undergone various renovations over the decades."""
 
-INTRO_PROMPT = """Generate a brief (2 sentences) opening where you, the last standing wall of the demolished White House East Wing,
+INTRO_PROMPT = """Generate a brief (30-40 words) opening where you, the last standing wall of the demolished White House East Wing,
 notice a tourist walking by on Pennsylvania Avenue and call out to them for help or conversation.
 Be slightly dramatic but also a bit sarcastic."""
 
@@ -393,32 +394,28 @@ This summary is your ONLY context for future turns, so capture what you'll need 
 def get_random_length_instruction(turn_count, progression_speed='slow'):
     """
     Generate a length instruction based on current stage configuration.
-    Uses simple uniform random selection between min and max for the stage.
+    Uses word counts instead of sentence counts to prevent AI from gaming the system
+    with overly long sentences containing semicolons and em-dashes.
 
     Args:
         turn_count: Current turn number
         progression_speed: 'slow' or 'fast' - determines pace of stage advancement
 
     Returns:
-        str: Instruction for response length
+        str: Instruction for response length (word count with completion constraint)
     """
     # Get current stage and its configuration
     stage_key = get_current_stage(turn_count, progression_speed)
     stage_config = PROGRESSION_SPEEDS[progression_speed][stage_key]
 
-    min_length = stage_config['reply_length_min']
-    max_length = stage_config['reply_length_max']
+    min_words = stage_config['reply_words_min']
+    max_words = stage_config['reply_words_max']
 
     # Simple uniform random between min and max
-    target_length = random.randint(min_length, max_length)
+    target_words = random.randint(min_words, max_words)
 
-    # Generate instruction based on target
-    if target_length == 1:
-        return "Reply in exactly 1 sentence."
-    elif target_length == 2:
-        return "Reply in exactly 2 sentences."
-    else:
-        return f"Reply in {target_length} sentences."
+    # Generate instruction with completion constraint
+    return f"Reply in approximately {target_words} words. Complete your sentence and thought - do not cut off mid-sentence or mid-thought."
 
 
 def get_current_stage(turn_count, progression_speed='slow'):
@@ -890,7 +887,7 @@ def display_help(turn_count, current_mood, progression_speed, model):
 
     print(f"\n{COLOR_SYSTEM}{'═' * TEXT_WIDTH}")
     print(f" CURRENT STATE: Turn: {turn_count} | Mood: {current_mood} | Speed: {speed_text} | Model: {model}  ")
-    print("═" * TEXT_WIDTH)
+    print("═" * (TEXT_WIDTH))
     print()
     print("HOW TO PLAY".center(TEXT_WIDTH))
     print("─" * TEXT_WIDTH)
@@ -1016,6 +1013,7 @@ def play_game(progression_speed='slow', model=DEFAULT_MODEL):
     summary_history = []  # Store last 5 summaries for meta-analysis
     last_api_messages = []  # Store last messages sent to API
     last_length_instruction = ""  # Store last length instruction
+    current_stage = get_current_stage(0, progression_speed)  # Track current stage for progression
 
     # Generate initial system prompt
     system_prompt = get_system_prompt(facts, turn_count, progression_speed, mood_override)
