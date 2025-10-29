@@ -457,7 +457,7 @@ Examples:
 **All commands available to everyone:**
 
 ```
-help         - Show help screen with current state
+help, ?      - Show help screen with current state
 help <cmd>   - Shortcuts: help speed, help mood, help model, help color, help api, help memory
 
 quit/exit/bye/goodbye/ctrl-c - Exit game
@@ -479,6 +479,8 @@ api all      - Show complete untruncated API request
 
 memory       - AI analyzes summary evolution
 summary      - (alias for memory)
+
+turn         - Show current turn, speed, and mood
 ```
 
 **Command Format:**
@@ -504,7 +506,7 @@ summary      - (alias for memory)
 
 COMMANDS YOU MAY USE DURING THE CONVERSATION:
 
-help         - show this message
+help, ?      - show this message
 
 quit         - any of these will quit the program
 exit
@@ -528,6 +530,8 @@ api all      - show the complete untruncated API request
 
 memory       - AI summarizes the last few exchanges
 summary        between the player and 'the Wall'.
+
+turn         - show current turn, speed, and mood
 
 ────────────────────────────────────────────────────────────────────────
 ```

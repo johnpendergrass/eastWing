@@ -801,7 +801,7 @@ def parse_command(player_input):
         return ('quit', None)
 
     # Help
-    if text == 'help':
+    if text in ['help', '?']:
         return ('help', None)
 
     # Help shortcuts - map to specific commands
@@ -857,6 +857,10 @@ def parse_command(player_input):
     # Memory/summary commands
     if text in ['memory', 'summary']:
         return ('memory', None)
+
+    # Turn command
+    if text == 'turn':
+        return ('turn_show', None)
 
     # Validate common mistakes
     words = text.split()
@@ -984,7 +988,7 @@ def display_help(turn_count, current_mood, progression_speed, model):
     print()
     print("COMMANDS YOU MAY USE DURING THE CONVERSATION:")
     print()
-    print("help         - show this message")
+    print("help, ?      - show this message")
     print()
     print("quit         - any of these will quit the program")
     print("exit")
@@ -1008,6 +1012,8 @@ def display_help(turn_count, current_mood, progression_speed, model):
     print()
     print("memory       - AI summarizes the last few exchanges")
     print("summary        between the player and 'the Wall'.")
+    print()
+    print("turn         - show current turn, speed, mood, and model")
     print()
     print("─" * TEXT_WIDTH)
     print(COLOR_RESET)
@@ -1226,6 +1232,12 @@ def play_game(progression_speed='slow', model=DEFAULT_MODEL):
                 display_memory_analysis(summary_history, model)
             else:
                 print(f"{COLOR_SYSTEM}\nNo conversation history yet (need at least 2 turns).{COLOR_RESET}\n")
+            continue
+
+        # Handle turn show
+        if cmd_type == 'turn_show':
+            current_mood = mood_override if mood_override else PROGRESSION_SPEEDS[progression_speed][get_current_stage(turn_count, progression_speed)]['personality']
+            print(f"{COLOR_SYSTEM}\nTurn: {turn_count}, Speed: {progression_speed}, Mood: {current_mood}, Model: {model}{COLOR_RESET}\n")
             continue
 
         # ═══ CONVERSATION LOGIC ═══
