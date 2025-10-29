@@ -253,10 +253,10 @@ summary        between the player and 'the Wall'.
 
 **Examples:**
 ```bash
-python game.py                    # Slow mode, gpt-5-mini (defaults)
-python game.py --fast             # Fast testing mode
-python game.py --model gpt-5-nano # Cheapest model
-python game.py --fast --model gpt-5  # Fast + best quality
+python eastWing.py                    # Slow mode, gpt-5-mini (defaults)
+python eastWing.py --fast             # Fast testing mode
+python eastWing.py --model gpt-5-nano # Cheapest model
+python eastWing.py --fast --model gpt-5  # Fast + best quality
 ```
 
 ---
@@ -277,7 +277,7 @@ python game.py --fast --model gpt-5  # Fast + best quality
 
 ## File Changes Summary
 
-**game.py** (~1275 lines, was ~1400):
+**eastWing.py** (~1275 lines, was ~1400):
 - ~200 lines deleted (old command code)
 - ~120 lines added (new UI system)
 - ~80 lines modified (function signatures, defaults)
@@ -481,7 +481,7 @@ Update `MODEL_OPTIONS` dictionary:
 
 **Time invested:** ~2-3 hours of development
 **Lines modified:** ~400 lines
-**Files modified:** 1 (game.py)
+**Files modified:** 1 (eastWing.py)
 **New features:** 5 major features
 **Bugs fixed:** 2 (model speed issue, temperature support)
 **Code quality:** Improved (cleaner, more organized)

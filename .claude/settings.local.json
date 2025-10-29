@@ -3,7 +3,9 @@
     "allow": [
       "Bash(python game.py:*)",
       "Bash(python3:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(dir:*)",
+      "Bash(python -m venv:*)"
     ],
     "deny": [],
     "ask": []

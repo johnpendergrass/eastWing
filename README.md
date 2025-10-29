@@ -18,7 +18,7 @@ A conversational text adventure where you chat with the last remaining wall of t
 
 4. **Run the game:**
    ```bash
-   python game.py
+   python eastWing.py
    ```
 
 ## How to Play
