@@ -6,6 +6,8 @@ v0.19.1 - 2025-10-29 - Initial Public Release
 
 note: i have hardcoded the api keys for openai and tavily.  I am not using the .env file for this version.  this is a security risk, but I am doing it for the sake of simplicity. delete that key after a couple folks have played the game.
 
+fixed: windows color support
+
 """
 
 import os
@@ -20,6 +22,15 @@ from tavily import TavilyClient
 
 # Load environment variables
 load_dotenv()
+
+# Windows ANSI color support
+import platform
+if platform.system() == 'Windows':
+    try:
+        from colorama import just_fix_windows_console
+        just_fix_windows_console()
+    except ImportError:
+        pass  # Colorama not available, colors may not work on older Windows terminals
 
 # Initialize OpenAI client
 # HARDCODED API KEY - Replace "your-actual-openai-key-here" with your real key
