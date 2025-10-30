@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
 The East Wing - A conversational text adventure powered by OpenAI's GPT models.
+
+v0.19.1 - 2025-10-29 - Initial Public Release
 """
 
 import os
