@@ -9,7 +9,8 @@
       "Bash(pyinstaller:*)",
       "Bash(pip install:*)",
       "Bash(source .venv/bin/activate)",
-      "Bash(pip:*)"
+      "Bash(pip:*)",
+      "Bash(python eastWing.py:*)"
     ],
     "deny": [],
     "ask": []

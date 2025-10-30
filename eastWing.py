@@ -32,9 +32,12 @@ if platform.system() == 'Windows':
     except ImportError:
         pass  # Colorama not available, colors may not work on older Windows terminals
 
-# Initialize OpenAI client
-# HARDCODED API KEY - Replace "your-actual-openai-key-here" with your real key
-client = OpenAI(api_key="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")
+# OpenAI API Key - HARDCODED for distribution
+# Replace "your-actual-openai-key-here" with your real key before building .exe
+OPENAI_API_KEY = "your-actual-openai-key-here"
+
+# Initialize OpenAI client as None - will be created with error handling on first use
+client = None
 
 # Game configuration
 TEXT_WIDTH = 72  # Width for text wrapping
@@ -249,6 +252,30 @@ FALLBACK_FACTS = """The East Wing of the White House was originally built in 190
 INTRO_PROMPT = """Generate a brief (30-40 words) opening where you, the last standing wall of the demolished White House East Wing,
 notice a tourist walking by on Pennsylvania Avenue and call out to them for help or conversation.
 Be slightly dramatic but also a bit sarcastic."""
+
+
+def display_api_key_error_and_exit(error_message):
+    """Display user-friendly API key error and wait for Enter before exiting
+
+    Args:
+        error_message: The error details from the API
+    """
+    print()
+    print(f"{COLOR_ALERT}{'═' * TEXT_WIDTH}")
+    print("ERROR".center(TEXT_WIDTH))
+    print("═" * TEXT_WIDTH)
+    print()
+    print("OpenAI API key is missing or invalid.")
+    print()
+    print("This program requires a valid OpenAI API key to function.")
+    print()
+    print(f"Error details: {error_message}")
+    print()
+    print("Press <Enter> to exit...")
+    print("═" * TEXT_WIDTH)
+    print(COLOR_RESET)
+    input()  # Wait for Enter key
+    sys.exit(1)
 
 
 def get_system_prompt(facts, turn_count=0, progression_speed='slow', mood_override=None):
@@ -499,7 +526,7 @@ def fetch_east_wing_facts():
     tavily_key = "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"
 
     if not tavily_key or tavily_key == "your-actual-tavily-key-here":
-        print("Note: No Tavily API key found - using basic facts.")
+        print("Note: Tavily API key missing. Using fallback facts.")
         return FALLBACK_FACTS
 
     try:
@@ -568,7 +595,7 @@ def fetch_east_wing_facts():
         return FALLBACK_FACTS
 
     except Exception as e:
-        print(f"Note: Could not fetch current facts ({e}). Using basic facts.")
+        print(f"Note: Tavily API key missing or invalid. Using fallback facts.")
         return FALLBACK_FACTS
 
 
@@ -1094,12 +1121,22 @@ def get_opening_message(system_prompt, progression_speed='slow', model=DEFAULT_M
     if MODEL_OPTIONS[model]['is_reasoning_model']:
         api_params['reasoning_effort'] = MODEL_OPTIONS[model]['reasoning_effort']
 
-    response = client.chat.completions.create(**api_params)
+    # Make API call with error handling for missing/invalid keys
+    try:
+        # Initialize OpenAI client if not already done
+        global client
+        if client is None:
+            client = OpenAI(api_key=OPENAI_API_KEY)
 
-    # Parse JSON response - only display the response, not the summary
-    result = json.loads(response.choices[0].message.content)
-    wall_greeting = result["response"]
-    # Note: result["summary"] exists but we don't use it for the opening
+        response = client.chat.completions.create(**api_params)
+
+        # Parse JSON response - only display the response, not the summary
+        result = json.loads(response.choices[0].message.content)
+        wall_greeting = result["response"]
+        # Note: result["summary"] exists but we don't use it for the opening
+    except Exception as e:
+        # API key is missing, invalid, expired, or other API error
+        display_api_key_error_and_exit(str(e))
 
     print_wrapped(wall_greeting, "THE WALL: ", COLOR_AI)
     print_separator()
