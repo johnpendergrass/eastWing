@@ -1,5 +1,5 @@
 # The East Wing - Technical Specifications
-**Version:** 0.19.1 (Dropbox Distribution with Embedded Keys)
+**Version:** 0.19.2 (Error Handling & API Key Security)
 **Last Updated:** 2025-10-30
 
 ---
@@ -366,34 +366,109 @@ THE WALL: [first AI response here]
 
 ---
 
+### 15. Graceful API Key Error Handling
+
+**Decision:** Defer OpenAI client initialization and catch errors with user-friendly messages
+
+**Why:**
+- **Security incident:** OpenAI detected keys in GitHub repo and disabled them (v0.19.1)
+- **User experience:** Crashes with technical errors are confusing for non-developers
+- **Windows .exe behavior:** Window instantly closes on error, users can't see what went wrong
+- **Distribution safety:** Need to keep placeholder keys in GitHub, real keys only in .exe
+
+**Problem with v0.19.1:**
+```python
+# Old way - failed at script load time (line 37)
+client = OpenAI(api_key="sk-proj-...")
+# If key invalid, Python crashes immediately with no way to catch it
+```
+
+**Solution in v0.19.2:**
+```python
+# Line 37 - Store key as variable
+OPENAI_API_KEY = "your-actual-openai-key-here"
+
+# Line 40 - Defer client creation
+client = None
+
+# Line 1127 - Initialize with error handling
+try:
+    global client
+    if client is None:
+        client = OpenAI(api_key=OPENAI_API_KEY)
+    response = client.chat.completions.create(**api_params)
+except Exception as e:
+    display_api_key_error_and_exit(str(e))
+```
+
+**Error Display Function (line 254):**
+- Shows formatted error message in a bordered box
+- Explains that valid OpenAI API key is required
+- Displays specific error details for debugging
+- **Waits for Enter key** - Critical for .exe so window doesn't disappear
+- Exits gracefully with `sys.exit(1)`
+
+**Error Message Format:**
+```
+════════════════════════════════════════════════════════════
+                         ERROR
+════════════════════════════════════════════════════════════
+
+OpenAI API key is missing or invalid.
+
+This program requires a valid OpenAI API key to function.
+
+Error details: [specific OpenAI error message]
+
+Press <Enter> to exit...
+════════════════════════════════════════════════════════════
+```
+
+**Tavily Error Handling:**
+- Non-fatal: Shows warning but continues with fallback facts
+- Message: "Tavily API key missing or invalid. Using fallback facts."
+- Game playable without Tavily (basic facts provided)
+
+**Benefits:**
+- Users see clear explanation instead of Python traceback
+- Window stays open so users can read error (critical for .exe)
+- Catches all error types: missing key, invalid key, expired key, network errors
+- Allows safe build workflow (placeholder keys in GitHub, real keys in .exe)
+
+---
+
 ## File Organization
 
 ```
-eastWing.py structure (~1375 lines):
-├── Shebang & Docstring (lines 1-4)
-├── Imports (lines 6-14)
-├── Environment & Client Setup (lines 16-20)
-├── Game Configuration (lines 22-24)
+eastWing.py structure (~1415 lines in v0.19.2):
+├── Shebang & Docstring (lines 1-11)
+├── Imports (lines 13-21)
+├── Windows Color Support (lines 26-33)
+├── API Key & Client Setup (lines 35-40) - NEW in v0.19.2
+│   ├── OPENAI_API_KEY variable (placeholder in GitHub, real in .exe)
+│   └── client = None (deferred initialization)
+├── Game Configuration (lines 42-43)
 │   └── TEXT_WIDTH = 72
-├── Color Theme System (lines 25-75)
+├── Color Theme System (lines 45-95)
 │   ├── COLOR_THEMES dict (5 themes)
 │   ├── DEFAULT_COLOR_THEME
 │   └── Initialize color variables
-├── Model Configuration (lines 76-118)
+├── Model Configuration (lines 97-138)
 │   ├── MODEL_OPTIONS (4 models with capabilities)
 │   └── DEFAULT_MODEL = 'gpt-5-mini'
-├── Response Schema (lines 119-140)
+├── Response Schema (lines 140-161)
 │   └── WALL_RESPONSE_SCHEMA (JSON schema)
-├── Stage Progression Config (lines 141-201)
+├── Stage Progression Config (lines 163-265)
 │   ├── PROGRESSION_SPEEDS (slow + fast)
 │   └── Word count ranges per stage
-├── Fallback Facts & Prompts (lines 202-208)
+├── Fallback Facts & Prompts (lines 267-275)
 │
-├── Core Functions (lines 209-764)
+├── Core Functions (lines 254-808) - UPDATED in v0.19.2
+│   ├── display_api_key_error_and_exit(error_message) - NEW
 │   ├── get_system_prompt(facts, turn, speed, mood_override)
 │   ├── get_random_length_instruction(turn, speed)
 │   ├── get_current_stage(turn, speed)
-│   ├── fetch_east_wing_facts() - Tavily API
+│   ├── fetch_east_wing_facts() - Tavily API with improved errors
 │   ├── validate_model(model_name)
 │   ├── set_color_theme(theme_name)
 │   ├── print_separator()
@@ -593,7 +668,7 @@ def get_random_length_instruction(turn_count, progression_speed):
 
 ## Windows Executable Distribution
 
-### PyInstaller Build (v0.19.1)
+### PyInstaller Build (v0.19.2)
 
 **Status:** ✅ COMPLETED - Tested and verified on multiple machines
 
@@ -611,25 +686,45 @@ def get_random_length_instruction(turn_count, progression_speed):
 - Complete Python 3.x runtime
 - All dependencies (openai, python-dotenv, tavily-python)
 - Standard library modules
-- **API keys hardcoded in source code** (eastWing.py lines 23 and 485)
+- **API keys embedded from variables** (eastWing.py lines 37 and 523)
 
-**API Key Implementation:**
-- **OpenAI API Key** - Hardcoded at line 23: `client = OpenAI(api_key="sk-proj-...")`
-- **Tavily API Key** - Hardcoded at line 485: `tavily_key = "tvly-dev-..."`
+**API Key Implementation (v0.19.2):**
+- **OpenAI API Key** - Stored in variable at line 37: `OPENAI_API_KEY = "sk-proj-..."`
+- **Tavily API Key** - Stored in variable at line 523: `tavily_key = "tvly-dev-..."`
+- **Client Initialization** - Deferred until first use (line 40: `client = None`)
+- **Error Handling** - Graceful error display if keys are missing/invalid
 - No `.env` file required or bundled
 - Keys are embedded directly in the executable
 - ⚠️ **Security Note:** Suitable for private distribution to trusted friends only. NOT suitable for public distribution without modification.
 
-**Build Command:**
+**Build Command (Safe Workflow):**
 ```bash
+# IMPORTANT: Add real keys to eastWing.py first (lines 37 and 523)
+
 # Clean previous builds
 rm -rf build/ dist/
 
-# Build executable (with hardcoded keys in eastWing.py)
+# Build executable (with real keys in variables)
 pyinstaller eastWing.spec
 
 # Output location
 dist/eastWing.exe
+
+# CRITICAL: Immediately restore placeholder keys in eastWing.py before git operations
+# Line 37: OPENAI_API_KEY = "your-actual-openai-key-here"
+# Line 523: tavily_key = "your-actual-tavily-key-here"
+```
+
+**Alternative: Git Checkout Method**
+```bash
+# Add real keys to eastWing.py
+# Build executable
+pyinstaller eastWing.spec
+
+# Restore file to GitHub version (removes real keys)
+git checkout eastWing.py
+
+# Now safe to commit other changes
 ```
 
 **Distribution Requirements:**
@@ -759,11 +854,18 @@ tavily-python>=0.3.0
   - Turn command added
   - '?' help synonym added
   - Windows executable built and tested
-  - **2025-10-30 Update:** API keys embedded in source code (lines 23, 485)
-  - **2025-10-30 Update:** Distribution via Dropbox links to trusted friends
-  - **2025-10-30 Update:** No .env file required for executable
-  - Ready for private distribution
+  - **2025-10-30 Morning:** API keys embedded in source code (lines 23, 485)
+  - **2025-10-30 Morning:** Distribution via Dropbox links to trusted friends
+  - **Issue:** OpenAI detected keys in GitHub and disabled them
+- **v0.19.2** - Security fix and error handling (2025-10-30 afternoon)
+  - Graceful error handling for invalid/missing API keys
+  - Deferred OpenAI client initialization (line 40)
+  - User-friendly error message with "Press Enter to exit"
+  - API keys stored as variables (lines 37, 523) instead of direct in OpenAI() call
+  - Improved Tavily error messages (non-fatal)
+  - Safe build workflow documented (placeholder keys in GitHub, real keys in .exe)
+  - Ready for private distribution via Dropbox
 
 ---
 
-*This specification reflects v0.19.1 of The East Wing, with distribution updates completed on 2025-10-30.*
+*This specification reflects v0.19.2 of The East Wing, with API key security and error handling improvements completed on 2025-10-30.*

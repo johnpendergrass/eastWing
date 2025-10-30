@@ -10,7 +10,7 @@ __pycache__/
 venv/
 env/
 ENV/
-
+dist/
 # Saved games
 saved_games/
 
