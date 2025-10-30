@@ -3,6 +3,9 @@
 The East Wing - A conversational text adventure powered by OpenAI's GPT models.
 
 v0.19.1 - 2025-10-29 - Initial Public Release
+
+note: i have hardcoded the api keys for openai and tavily.  I am not using the .env file for this version.  this is a security risk, but I am doing it for the sake of simplicity. delete that key after a couple folks have played the game.
+
 """
 
 import os
@@ -19,7 +22,8 @@ from tavily import TavilyClient
 load_dotenv()
 
 # Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# HARDCODED API KEY - Replace "your-actual-openai-key-here" with your real key
+client = OpenAI(api_key="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")
 
 # Game configuration
 TEXT_WIDTH = 72  # Width for text wrapping
@@ -479,9 +483,11 @@ def fetch_east_wing_facts():
     1. General East Wing renovation facts
     2. Specific facts about Trump's building code violations
     """
-    tavily_key = os.getenv("TAVILY_API_KEY")
+    # HARDCODED API KEY - Replace "your-actual-tavily-key-here" with your real key
+    # Or set to None to use fallback facts: tavily_key = None
+    tavily_key = "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"
 
-    if not tavily_key:
+    if not tavily_key or tavily_key == "your-actual-tavily-key-here":
         print("Note: No Tavily API key found - using basic facts.")
         return FALLBACK_FACTS
 
@@ -1369,12 +1375,7 @@ def main():
     else:
         print(f"{COLOR_ALERT}Using model: {model_to_use}{COLOR_RESET}")
 
-    # Check for API key
-    if not os.getenv("OPENAI_API_KEY"):
-        print("ERROR: OPENAI_API_KEY not found in environment variables.")
-        print("Please create a .env file with your API key.")
-        print("See .env.example for the format.")
-        sys.exit(1)
+    # API key validation removed - key is now hardcoded in line 23
 
     # Determine progression speed from flags (default is slow)
     if args.fast:

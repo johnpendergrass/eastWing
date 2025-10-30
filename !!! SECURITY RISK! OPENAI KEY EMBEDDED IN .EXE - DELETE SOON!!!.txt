@@ -1,0 +1,5 @@
+!!! SECURITY RISK! OPENAI KEY EMBEDDED IN .EXE - DELETE SOON!!!
+
+NOTE: I embedded my openAI key inside the .py and .exe file so that others could use this program.  this key costs $$$$ and should not just be left out there.
+
+remember to delete that key soon!!!

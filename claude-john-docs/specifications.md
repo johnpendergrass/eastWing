@@ -1,6 +1,6 @@
 # The East Wing - Technical Specifications
-**Version:** 0.19.1 (Initial Public Release)
-**Last Updated:** 2025-10-29
+**Version:** 0.19.1 (Dropbox Distribution with Embedded Keys)
+**Last Updated:** 2025-10-30
 
 ---
 
@@ -597,6 +597,8 @@ def get_random_length_instruction(turn_count, progression_speed):
 
 **Status:** ✅ COMPLETED - Tested and verified on multiple machines
 
+**Distribution Method:** John's Dropbox links (private sharing with trusted friends)
+
 **Build Configuration:**
 - **Tool:** PyInstaller
 - **Mode:** --onefile (single executable)
@@ -609,14 +611,21 @@ def get_random_length_instruction(turn_count, progression_speed):
 - Complete Python 3.x runtime
 - All dependencies (openai, python-dotenv, tavily-python)
 - Standard library modules
-- .env file with API keys (current build)
+- **API keys hardcoded in source code** (eastWing.py lines 23 and 485)
+
+**API Key Implementation:**
+- **OpenAI API Key** - Hardcoded at line 23: `client = OpenAI(api_key="sk-proj-...")`
+- **Tavily API Key** - Hardcoded at line 485: `tavily_key = "tvly-dev-..."`
+- No `.env` file required or bundled
+- Keys are embedded directly in the executable
+- ⚠️ **Security Note:** Suitable for private distribution to trusted friends only. NOT suitable for public distribution without modification.
 
 **Build Command:**
 ```bash
 # Clean previous builds
 rm -rf build/ dist/
 
-# Build executable
+# Build executable (with hardcoded keys in eastWing.py)
 pyinstaller eastWing.spec
 
 # Output location
@@ -625,17 +634,19 @@ dist/eastWing.exe
 
 **Distribution Requirements:**
 - Windows 10 or later (64-bit)
-- Internet connection (for OpenAI API)
+- Internet connection (for OpenAI and Tavily APIs)
 - ~50-100 MB temp disk space (for extraction)
 - No Python installation required
 - No additional dependencies
+- No .env file or configuration needed
 
 **Testing Results:**
 - ✅ Runs on Windows 10 without Python
 - ✅ Runs on Windows 11 without Python
+- ✅ Works without .env file (keys embedded)
 - ✅ All game features functional
 - ✅ All commands work correctly
-- ✅ AI integration operational
+- ✅ AI integration operational (both OpenAI and Tavily)
 - ✅ Color themes display properly
 - ✅ Performance acceptable (~2-3 second startup)
 
@@ -643,11 +654,19 @@ dist/eastWing.exe
 - First startup takes 2-3 seconds (PyInstaller extraction)
 - Antivirus may flag as suspicious (false positive - common with PyInstaller)
 - Temp files created in %TEMP% directory
-- API keys bundled in executable (current build)
+- API keys embedded in executable (extractable with reverse-engineering effort)
 
-**Future Considerations:**
-- Rebuild without bundled .env for public distribution
-- Require users to provide their own API keys
+**Security Considerations:**
+- ✅ **Safe for:** Private distribution via Dropbox to trusted friends
+- ⚠️ **NOT safe for:** Public distribution (GitHub releases, itch.io, website downloads)
+- API keys can be extracted from the executable by someone with technical skills
+- For public distribution, would need to rebuild without hardcoded keys and require users to provide their own
+
+**For Public Distribution (Future):**
+- Remove hardcoded keys from eastWing.py (lines 23, 485)
+- Restore .env file requirement or add command-line key arguments
+- Update DISTRIBUTION_README.md with API key setup instructions
+- Consider alternative approaches (backend proxy, subscription model, etc.)
 - Create Linux/Mac builds
 - Code signing to reduce antivirus warnings
 
@@ -722,9 +741,14 @@ tavily-python>=0.3.0
 **Standard Library (no install needed):**
 - os, sys, textwrap, random, argparse, json
 
-**API Keys Required:**
+**API Keys Required (for development):**
 - `OPENAI_API_KEY` (required)
 - `TAVILY_API_KEY` (optional - fallback facts used if missing)
+
+**API Keys for Distribution (v0.19.1):**
+- Keys are hardcoded in eastWing.py (lines 23 and 485)
+- No .env file needed for distributed executable
+- See "Windows Executable Distribution" section above for details
 
 ---
 
@@ -735,8 +759,11 @@ tavily-python>=0.3.0
   - Turn command added
   - '?' help synonym added
   - Windows executable built and tested
-  - Ready for public distribution
+  - **2025-10-30 Update:** API keys embedded in source code (lines 23, 485)
+  - **2025-10-30 Update:** Distribution via Dropbox links to trusted friends
+  - **2025-10-30 Update:** No .env file required for executable
+  - Ready for private distribution
 
 ---
 
-*This specification reflects v0.19.1, the initial public release of The East Wing, completed on 2025-10-29.*
+*This specification reflects v0.19.1 of The East Wing, with distribution updates completed on 2025-10-30.*
